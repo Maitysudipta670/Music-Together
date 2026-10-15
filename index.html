@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>SyncTunes - Real-time Party Music</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎵</text></svg>">
+  <!-- YouTube IFrame Player API -->
+  <script src="https://www.youtube.com/iframe_api"></script>
+  <!-- Socket.IO Client -->
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <!-- Ambient Background Glow -->
+  <div class="ambient-glow"></div>
+
+  <div class="app-container">
+    <!-- Header -->
+    <header>
+      <div class="logo-area">
+        <div class="logo-icon">🎵</div>
+        <div class="logo-text">
+          <h1>SyncTunes</h1>
+          <div class="room-badge">
+            <span id="room-name">#party</span>
+            <span>•</span>
+            <span id="user-count">1 listener</span>
+          </div>
+        </div>
+      </div>
+      <div class="header-actions">
+        <div class="sync-status-indicator">
+          <div class="ping-dot"></div>
+          <span id="ping-ms">--ms</span>
+        </div>
+        <button id="btn-share" class="btn-icon" title="Invite Friends">
+          <span>📲</span> Share / QR
+        </button>
+        <button id="btn-admin-login" class="btn-icon" title="Admin Login" style="padding:8px 10px;">
+          <span id="admin-badge-icon">🔒</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Mobile Autoplay Unlock Banner -->
+    <div id="unlock-overlay">
+      <h3>🔊 Tap to Sync Audio with Friends!</h3>
+      <p>Mobile browsers require 1 tap to enable simultaneous synchronized sound.</p>
+    </div>
+
+    <!-- Active Sound Warning Banner (If muted by browser) -->
+    <div id="sound-notice" style="display:none; background:linear-gradient(135deg, #f72585, #7209b7); color:#fff; text-align:center; padding:12px; border-radius:14px; font-weight:700; cursor:pointer; font-size:0.9rem; box-shadow:0 4px 15px rgba(247,37,133,0.5);">
+      🔊 Audio is Muted by Browser — Tap Anywhere to Hear Music!
+    </div>
+
+    <!-- Connected Friends Bar -->
+    <div class="friends-bar">
+      <span style="color:var(--text-muted); font-size:0.75rem;">Connected Friends:</span>
+      <div id="friends-list" class="friends-list">
+        <!-- Injected via app.js -->
+      </div>
+    </div>
+
+    <!-- HTML5 Audio Element -->
+    <audio id="html5-audio" playsinline webkit-playsinline preload="auto"></audio>
+
+    <!-- Master Player Card -->
+    <div class="player-card">
+      <!-- Hidden/Toggleable YouTube Player Container -->
+      <div id="youtube-player-container">
+        <div id="yt-player"></div>
+      </div>
+
+      <!-- Track Info & Visualizer -->
+      <div class="track-hero">
+        <div class="cover-wrapper">
+          <img id="cover-img" class="cover-img" alt="Album Cover">
+          <div id="cover-placeholder" class="cover-placeholder">🎵</div>
+        </div>
+        <div class="track-meta">
+          <div id="track-title" class="track-title">No track playing</div>
+          <div class="track-sub">
+            <span id="track-source" class="badge-source">IDLE</span>
+            <div id="wave-bars" class="wave-bars">
+              <div class="wave-bar"></div>
+              <div class="wave-bar"></div>
+              <div class="wave-bar"></div>
+              <div class="wave-bar"></div>
+              <div class="wave-bar"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Time Slider -->
+      <div class="progress-container">
+        <input type="range" id="time-slider" class="time-slider" min="0" max="100" value="0" step="0.1">
+        <div class="time-labels">
+          <span id="current-time-label">0:00</span>
+          <span id="total-time-label">0:00</span>
+        </div>
+      </div>
+
+      <!-- Playback Controls -->
+      <div class="controls-row">
+        <button id="btn-play-master" class="btn-play-master" title="Play / Pause">▶</button>
+        <button id="btn-next" class="btn-ctrl" title="Next Song">⏭</button>
+      </div>
+
+      <!-- Sub Controls: Volume & Live Sync Badge -->
+      <div class="sub-controls">
+        <div class="volume-wrapper">
+          <button id="btn-mute" class="btn-ctrl" style="font-size:1.1rem;">🔊</button>
+          <input type="range" id="volume-slider" class="volume-slider" min="0" max="1" step="0.05" value="1">
+        </div>
+        <div id="drift-badge" class="drift-badge">
+          Sync: 0ms
+        </div>
+      </div>
+    </div>
+
+    <!-- Music Sources Tabs (YouTube & MP3 & Queue) -->
+    <div class="sources-card">
+      <div class="tab-nav">
+        <button class="tab-btn active" data-tab="tab-youtube">
+          <span>🎬</span> YouTube
+        </button>
+        <button class="tab-btn" data-tab="tab-mp3">
+          <span>📁</span> Upload MP3
+        </button>
+        <button class="tab-btn" data-tab="tab-queue">
+          <span>📑</span> Queue
+        </button>
+      </div>
+
+      <!-- YouTube Pane -->
+      <div id="tab-youtube" class="tab-pane active">
+        <div class="input-group">
+          <input type="text" id="yt-url-input" class="text-input" placeholder="Paste YouTube link (e.g. https://youtu.be/...)">
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button id="btn-yt-play" class="btn-primary" style="flex:1; justify-content:center; height:42px;">
+            ▶ Play Now
+          </button>
+          <button id="btn-yt-queue" class="btn-icon" style="flex:1; justify-content:center; height:42px;">
+            + Add to Queue
+          </button>
+        </div>
+      </div>
+
+      <!-- MP3 Pane -->
+      <div id="tab-mp3" class="tab-pane">
+        <input type="file" id="mp3-file-input" accept="audio/*" style="display:none;">
+        <div id="mp3-dropzone" class="dropzone">
+          <div class="dropzone-icon">📥</div>
+          <p>Drop audio file here or tap to select</p>
+          <span>Supports MP3, WAV, OGG, M4A, AAC (Up to 100MB)</span>
+        </div>
+        <div id="upload-status" style="display:none; font-size:0.8rem; color:var(--accent-cyan); text-align:center;"></div>
+        
+        <div style="font-size:0.82rem; font-weight:700; color:var(--text-muted); margin-top:6px;">
+          Uploaded Tracks on Server:
+        </div>
+        <div id="mp3-list" class="queue-list">
+          <!-- Injected via app.js -->
+        </div>
+      </div>
+
+      <!-- Queue Pane -->
+      <div id="tab-queue" class="tab-pane">
+        <div id="queue-list" class="queue-list">
+          <!-- Injected via app.js -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Emoji Reactions Bar -->
+    <div class="reactions-bar">
+      <button class="btn-reaction" data-emoji="🔥" title="Fire">🔥</button>
+      <button class="btn-reaction" data-emoji="❤️" title="Love">❤️</button>
+      <button class="btn-reaction" data-emoji="🎵" title="Music">🎵</button>
+      <button class="btn-reaction" data-emoji="🕺" title="Dance">🕺</button>
+      <button class="btn-reaction" data-emoji="💃" title="Party">💃</button>
+      <button class="btn-reaction" data-emoji="🎉" title="Celebrate">🎉</button>
+    </div>
+  </div>
+
+  <!-- QR Code & Invite Modal -->
+  <div id="qr-modal" class="modal-overlay">
+    <div class="modal-box">
+      <h3 style="font-size:1.2rem;">📲 Invite Friends to Party</h3>
+      <p style="font-size:0.85rem; color:var(--text-muted);">
+        Ask your friends to scan this QR code with their mobile camera to join and play together in sync!
+      </p>
+      <img id="qr-img" class="modal-qr-img" alt="QR Code">
+      <div class="share-link-box">
+        <input type="text" id="share-link-input" readonly style="background:transparent; border:none; color:inherit; width:100%; text-align:center; outline:none;">
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button id="btn-copy-link" class="btn-primary" style="flex:1; justify-content:center; height:42px;">
+          📋 Copy Link
+        </button>
+        <button id="btn-close-modal" class="btn-icon" style="flex:1; justify-content:center; height:42px;">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Admin Login Modal -->
+  <div id="admin-modal" class="modal-overlay">
+    <div class="modal-box">
+      <h3 style="font-size:1.2rem;">🔒 Admin Verification</h3>
+      <p style="font-size:0.85rem; color:var(--text-muted);">Enter Master Password to access Admin Tools:</p>
+      <input type="password" id="admin-pass-input" class="text-input" placeholder="Password" style="text-align:center; font-size:1.1rem; letter-spacing:3px;">
+      <div id="admin-login-error" style="color:#ff4d4d; font-size:0.82rem; display:none;"></div>
+      <div style="display:flex; gap:8px;">
+        <button id="btn-submit-admin" class="btn-primary" style="flex:1; justify-content:center; height:42px;">Login</button>
+        <button id="btn-cancel-admin" class="btn-icon" style="flex:1; justify-content:center; height:42px;">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Kicked Overlay (Shown to kicked user) -->
+  <div id="kicked-overlay" class="modal-overlay" style="z-index:99999;">
+    <div class="modal-box" style="border: 2px solid #ff4d4d;">
+      <div style="font-size:3.5rem;">🚫</div>
+      <h3 style="color:#ff4d4d; font-size:1.3rem;">Removed From Party</h3>
+      <p style="font-size:0.9rem; color:var(--text-muted); line-height:1.4;">
+        You have been removed from this party by the Admin.
+      </p>
+    </div>
+  </div>
+
+  <!-- App scripts -->
+  <script src="/js/sync-engine.js"></script>
+  <script src="/js/player.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
