@@ -12,12 +12,24 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   let newGeneratedCode = generate6DigitCode();
 
-  // Automatic in-app update check for Web and WebView
+  // Automatic in-app update check for Web users (Never show inside native app or if dismissed)
   function checkWebAutoUpdate() {
+    // 1. If running inside Native Android App, DO NOT show the web banner
+    // (Native Kotlin handles its own system update dialog when a real update exists)
+    if (navigator.userAgent && navigator.userAgent.includes('SyncTunesNativeApp')) {
+      return;
+    }
+
     fetch('/api/app-version')
       .then(r => r.json())
       .then(data => {
         if (data && data.versionCode) {
+          // 2. If user already dismissed this version update, do not show again
+          const dismissedVersion = localStorage.getItem('dismissed_update_version');
+          if (dismissedVersion === String(data.versionCode)) {
+            return;
+          }
+
           const banner = document.getElementById('app-update-banner');
           const title = document.getElementById('update-banner-title');
           const desc = document.getElementById('update-banner-desc');
@@ -31,6 +43,14 @@ document.addEventListener('DOMContentLoaded', () => {
       .catch(() => {});
   }
   setTimeout(checkWebAutoUpdate, 2000);
+
+  window.dismissUpdateBanner = function() {
+    const banner = document.getElementById('app-update-banner');
+    if (banner) banner.style.display = 'none';
+    try {
+      localStorage.setItem('dismissed_update_version', '4');
+    } catch (e) {}
+  };
 
   // DOM Elements
   const roomNameEl = document.getElementById('room-name');
