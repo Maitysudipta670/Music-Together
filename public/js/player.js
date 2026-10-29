@@ -319,8 +319,8 @@ class UnifiedSyncPlayer {
     if (this.isKicked || this.isMaintenanceLocked) return;
     const dur = this.getDuration();
     const cur = this.getCurrentTime();
-    // Guard: Video/track must be reasonably close to the end (within 3.5s) and must have played at least 5s!
-    if (dur > 6 && cur < dur - 3.5) {
+    // Strict Guard: Must have a known duration (> 8s), and current position must be at the very end (within 3.5s)
+    if (!dur || isNaN(dur) || dur <= 8 || cur < dur - 3.5) {
       console.warn(`[Player] Ignored premature track-ended event: cur=${cur}, dur=${dur}`);
       return;
     }
@@ -863,8 +863,8 @@ class UnifiedSyncPlayer {
 
       if (this.activeType === 'youtube') {
         // YouTube Player Drift Correction:
-        // 1. Massive drift (> 3.5s) -> Snap seek (e.g. manual jump or extreme lag)
-        if (absDrift > 3.5 && timeSinceLastSeek > 3000) {
+        // 1. Massive drift (> 6.5s) -> Snap seek (e.g. manual slider seek or severe lag)
+        if (absDrift > 6.5 && timeSinceLastSeek > 4000) {
           this.seek(expectedPos);
           this.setPlaybackRate(1.0);
         }

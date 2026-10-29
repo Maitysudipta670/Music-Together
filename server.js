@@ -70,10 +70,10 @@ app.use('/uploads', express.static(UPLOADS_DIR, {
 // ========================================================
 app.get('/api/app-version', (req, res) => {
   res.json({
-    versionCode: 1, // Change this to 2, 3... whenever you release a new APK!
-    versionName: "1.0.0",
+    versionCode: 2, // Bumped to 2 for In-App Auto-Update!
+    versionName: "1.1.0",
     apkUrl: "https://music-together-tr1h.onrender.com/download/latest.apk",
-    releaseNotes: "• Zero-delay precision audio sync\n• Fixed track auto-skipping\n• Modern mobile player UI",
+    releaseNotes: "• Zero-delay precision audio sync\n• Fixed track auto-skipping\n• Restored original working UI",
     forceUpdate: false
   });
 });
