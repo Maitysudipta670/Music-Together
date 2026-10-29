@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  
+  <!-- Google Search Console Site Verification -->
+  <meta name="google-site-verification" content="z8y7gh3ed3AWKi_lHBEXojpb9wIPeWzNHKJMbSxaTxA" />
+
+  <!-- Primary SEO Meta Tags -->
+  <title>SyncTunes - Realtime Synchronized Music with Friends | YouTube & MP3</title>
+  <meta name="title" content="SyncTunes - Realtime Synchronized Music with Friends | YouTube & MP3">
+  <meta name="description" content="Listen to synchronized music in real-time with your friends. Zero-delay audio playback for YouTube videos and uploaded MP3 tracks using instant 6-digit room codes.">
+  <meta name="keywords" content="sync music with friends, listen together, listen to youtube together, sound sync, sync party, simultaneous audio player, listen to music at the same time">
+  <meta name="robots" content="index, follow">
+  <meta name="language" content="English, Bengali, Hindi">
+  <meta name="author" content="SyncTunes">
+
+  <!-- Open Graph / Facebook / WhatsApp Preview -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="SyncTunes - Realtime Synchronized Music Party">
+  <meta property="og:description" content="Listen to music together simultaneously with friends. Zero lag, YouTube & MP3 sync rooms with 6-digit codes.">
+  <meta property="og:image" content="https://img.youtube.com/vi/jfKfPfyJRdk/hqdefault.jpg">
+
+  <!-- Twitter Card -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:title" content="SyncTunes - Realtime Synchronized Music Party">
+  <meta property="twitter:description" content="Listen to music together simultaneously with friends. Zero lag, YouTube & MP3 sync rooms with 6-digit codes.">
+
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎵</text></svg>">
+  <!-- YouTube IFrame Player API -->
+  <script src="https://www.youtube.com/iframe_api"></script>
+  <!-- Socket.IO Client -->
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <!-- Sticky Admin Maintenance Notice & Fast Switch (Only visible to Admin when Maintenance Mode is ON) -->
+  <div id="admin-maintenance-bar" class="admin-maintenance-bar" style="display: none;">
+    <div class="amb-inner">
+      <div class="amb-left">
+        <span class="amb-icon">⚠️</span>
+        <span class="amb-badge">MAINTENANCE ACTIVE</span>
+        <span class="amb-desc">Public users are blocked. Test the site freely.</span>
+      </div>
+      <button id="btn-toggle-maintenance-top" class="amb-btn-turn-off" type="button">
+        ✅ Turn OFF Maintenance (Open for Public)
+      </button>
+    </div>
+  </div>
+
+  <!-- Ambient Background Glow -->
+  <div class="ambient-glow"></div>
+
+  <div class="app-container">
+    <!-- Header -->
+    <header>
+      <div class="logo-area">
+        <div class="logo-icon">🎵</div>
+        <div class="logo-text">
+          <h1>SyncTunes</h1>
+          <div class="room-badge">
+            <span id="room-name" style="font-weight:700; letter-spacing:1px;">#party</span>
+            <button id="btn-copy-room-code" class="btn-mini" title="Copy 6-Digit Code" style="font-size:0.75rem; padding:2px 6px; background:rgba(255,255,255,0.08); border-radius:6px; margin-left:2px; cursor:pointer;">📋 Copy</button>
+            <button id="btn-toggle-room-lock" class="room-lock-pill unlocked" title="Room is Open. Host/Admin can tap to Lock">🔓 Open</button>
+            <span>•</span>
+            <span id="user-count">1 listener</span>
+            <span>•</span>
+            <span id="my-profile-pill" style="cursor:pointer; color:var(--accent-cyan); font-weight:600;" title="Click to edit name">👤 Guest</span>
+          </div>
+        </div>
+      </div>
+      <div class="header-actions">
+        <div class="sync-status-indicator">
+          <div class="ping-dot"></div>
+          <span id="ping-ms">--ms</span>
+        </div>
+        <button id="btn-switch-room" class="btn-icon" title="Switch or Create Room">
+          <span>🔄</span> Room
+        </button>
+        <button id="btn-share" class="btn-icon" title="Invite Friends">
+          <span>📲</span> Share / QR
+        </button>
+        <button id="btn-admin-login" class="btn-icon" title="Admin Login" style="padding:8px 10px;">
+          <span id="admin-badge-icon">🔒</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Dedicated Admin Control Strip (STRICTLY ONLY Visible when Admin is Logged In) -->
+    <div id="admin-control-strip" class="admin-control-strip" style="display: none;">
+      <div class="acs-left">
+        <span class="acs-crown">👑</span>
+        <div class="acs-text-group">
+          <div class="acs-title">Admin Management</div>
+          <div id="acs-maint-status-text" class="acs-status">
+            Website: <strong style="color: #10b981;">🟢 Live (Public Can Use)</strong>
+          </div>
+        </div>
+      </div>
+      <div class="acs-right">
+        <button id="btn-acs-toggle-maintenance" class="btn-acs-maint is-live" type="button">
+          🚧 Turn ON Maintenance Mode
+        </button>
+        <button id="btn-acs-logout" class="btn-acs-logout" type="button" title="Logout as Admin">
+          🚪 Logout
+        </button>
+      </div>
+    </div>
+
+    <!-- Mobile Autoplay Unlock Banner -->
+    <div id="unlock-overlay">
+      <h3>🔊 Tap to Sync Audio with Friends!</h3>
+      <p>Mobile browsers require 1 tap to enable simultaneous synchronized sound.</p>
+    </div>
+
+    <!-- Active Sound Warning Banner (If muted by browser) -->
+    <div id="sound-notice" style="display:none; background:linear-gradient(135deg, #f72585, #7209b7); color:#fff; text-align:center; padding:12px; border-radius:14px; font-weight:700; cursor:pointer; font-size:0.9rem; box-shadow:0 4px 15px rgba(247,37,133,0.5);">
+      🔊 Audio is Muted by Browser — Tap Anywhere to Hear Music!
+    </div>
+
+    <!-- Connected Friends Bar -->
+    <div class="friends-bar">
+      <span style="color:var(--text-muted); font-size:0.75rem;">Connected Friends:</span>
+      <div id="friends-list" class="friends-list">
+        <!-- Injected via app.js -->
+      </div>
+    </div>
+
+    <!-- HTML5 Audio Element -->
+    <audio id="html5-audio" playsinline webkit-playsinline preload="auto"></audio>
+
+    <!-- Master Player Card -->
+    <div class="player-card">
+      <!-- Hidden/Toggleable YouTube Player Container -->
+      <div id="youtube-player-container">
+        <div id="yt-player"></div>
+      </div>
+
+      <!-- Track Info & Visualizer -->
+      <div class="track-hero">
+        <div class="cover-wrapper">
+          <img id="cover-img" class="cover-img" alt="Album Cover">
+          <div id="cover-placeholder" class="cover-placeholder">🎵</div>
+        </div>
+        <div class="track-meta">
+          <div id="track-title" class="track-title">No track playing</div>
+          <div id="track-sub" class="track-sub">
+            <span id="track-source" class="badge-source">IDLE</span>
+            <div id="wave-bars" class="wave-bars">
+              <div class="wave-bar"></div>
+              <div class="wave-bar"></div>
+              <div class="wave-bar"></div>
+              <div class="wave-bar"></div>
+              <div class="wave-bar"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Time Slider -->
+      <div class="progress-container">
+        <input type="range" id="time-slider" class="time-slider" min="0" max="100" value="0" step="0.1">
+        <div class="time-labels">
+          <span id="current-time-label">0:00</span>
+          <span id="total-time-label">0:00</span>
+        </div>
+      </div>
+
+      <!-- Playback Controls -->
+      <div class="controls-row">
+        <button id="btn-play-master" class="btn-play-master" title="Play / Pause">▶</button>
+        <button id="btn-next" class="btn-ctrl" title="Next Song">⏭</button>
+      </div>
+
+      <!-- Sub Controls: Volume & Live Sync Badge -->
+      <div class="sub-controls">
+        <div class="volume-wrapper">
+          <button id="btn-mute" class="btn-ctrl" style="font-size:1.1rem;">🔊</button>
+          <input type="range" id="volume-slider" class="volume-slider" min="0" max="1" step="0.05" value="1">
+        </div>
+        <div id="drift-badge" class="drift-badge">
+          Sync: 0ms
+        </div>
+      </div>
+
+      <!-- Headphone Audio FX: 8D Audio & Bass Booster -->
+      <div class="audio-fx-row">
+        <button id="btn-toggle-8d" class="btn-fx-pill" type="button" title="360° 8D Audio (Best with Headphones 🎧)">
+          <span class="fx-icon">🎧</span> 8D Audio: <b id="status-8d">OFF</b>
+        </button>
+        <button id="btn-toggle-bass" class="btn-fx-pill" type="button" title="Bass Booster (+12dB Low-End Punch)">
+          <span class="fx-icon">🔊</span> Bass Boost: <b id="status-bass">OFF</b>
+        </button>
+      </div>
+    </div>
+
+    <!-- Music Sources Tabs (YouTube & MP3 & Queue & Chat) -->
+    <div class="sources-card">
+      <div class="tab-nav">
+        <button class="tab-btn active" data-tab="tab-youtube">
+          <span>🎬</span> YouTube
+        </button>
+        <button class="tab-btn" data-tab="tab-mp3">
+          <span>📁</span> Upload MP3
+        </button>
+        <button class="tab-btn" data-tab="tab-queue">
+          <span>📑</span> Queue
+        </button>
+        <button class="tab-btn" data-tab="tab-chat" id="tab-btn-chat">
+          <span>💬</span> Live Chat <span id="chat-unread-badge" class="chat-badge" style="display:none;">0</span>
+        </button>
+      </div>
+
+      <!-- YouTube Pane -->
+      <div id="tab-youtube" class="tab-pane active">
+        <!-- In-App YouTube Search -->
+        <div class="yt-search-bar" style="display:flex; gap:8px; margin-bottom:8px;">
+          <input type="text" id="yt-search-input" class="text-input" placeholder="🔍 Search song or artist (e.g. Kesariya, Arijit Singh)..." style="flex:1;">
+          <button id="btn-yt-search" class="btn-primary" style="height:42px; min-width:85px; justify-content:center; white-space:nowrap;">
+            🔍 Search
+          </button>
+        </div>
+
+        <!-- Search Results List -->
+        <div id="yt-search-results" class="yt-search-results" style="display:none;">
+          <div id="yt-search-spinner" class="yt-search-loading" style="display:none; text-align:center; padding:12px; color:var(--accent-cyan); font-size:0.85rem;">
+            ⏳ Searching YouTube...
+          </div>
+          <div id="yt-search-cards" class="yt-search-cards"></div>
+        </div>
+
+        <!-- Or Paste Direct Link Toggle -->
+        <div class="direct-link-toggle-row" id="toggle-direct-link" style="display:flex; justify-content:space-between; align-items:center; padding:6px 4px; cursor:pointer; color:var(--text-muted); font-size:0.75rem; font-weight:600; margin-top:4px;">
+          <span>🔗 Or paste direct YouTube link</span>
+          <span id="direct-link-arrow">▼</span>
+        </div>
+
+        <div id="direct-link-section" style="display:none; margin-top:6px;">
+          <div class="input-group">
+            <input type="text" id="yt-url-input" class="text-input" placeholder="Paste link (e.g. https://youtu.be/...)">
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button id="btn-yt-play" class="btn-primary" style="flex:1; justify-content:center; height:40px;">
+              ▶ Play Now
+            </button>
+            <button id="btn-yt-queue" class="btn-icon" style="flex:1; justify-content:center; height:40px;">
+              + Add to Queue
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- MP3 Pane -->
+      <div id="tab-mp3" class="tab-pane">
+        <input type="file" id="mp3-file-input" accept="audio/*" style="display:none;">
+        <div id="mp3-dropzone" class="dropzone">
+          <div class="dropzone-icon">📥</div>
+          <p>Drop audio file here or tap to select</p>
+          <span>Supports MP3, WAV, OGG, M4A, AAC (Up to 100MB)</span>
+        </div>
+        <div id="upload-status" style="display:none; font-size:0.8rem; color:var(--accent-cyan); text-align:center;"></div>
+        
+        <div style="font-size:0.82rem; font-weight:700; color:var(--text-muted); margin-top:6px;">
+          Uploaded Tracks on Server:
+        </div>
+        <div id="mp3-list" class="queue-list">
+          <!-- Injected via app.js -->
+        </div>
+      </div>
+
+      <!-- Queue Pane -->
+      <div id="tab-queue" class="tab-pane">
+        <div id="queue-list" class="queue-list">
+          <!-- Injected via app.js -->
+        </div>
+      </div>
+
+      <!-- Live Room Chat Pane -->
+      <div id="tab-chat" class="tab-pane">
+        <div class="chat-wrapper">
+          <div id="chat-messages" class="chat-messages-container">
+            <div class="chat-welcome-notice">
+              💬 Welcome to Room Live Chat! Message your friends while listening together in sync.
+            </div>
+          </div>
+          
+          <div class="chat-quick-emojis">
+            <button type="button" class="btn-chat-emoji" data-emoji="❤️">❤️</button>
+            <button type="button" class="btn-chat-emoji" data-emoji="🔥">🔥</button>
+            <button type="button" class="btn-chat-emoji" data-emoji="😂">😂</button>
+            <button type="button" class="btn-chat-emoji" data-emoji="👏">👏</button>
+            <button type="button" class="btn-chat-emoji" data-emoji="💃">💃</button>
+            <button type="button" class="btn-chat-emoji" data-emoji="🕺">🕺</button>
+            <button type="button" class="btn-chat-emoji" data-emoji="🎉">🎉</button>
+            <button type="button" class="btn-chat-emoji" data-emoji="🎧">🎧</button>
+          </div>
+
+          <form id="chat-form" class="chat-input-row" onsubmit="return false;">
+            <input type="text" id="chat-input" class="text-input chat-input-field" placeholder="Type a message to the room..." maxlength="300" autocomplete="off">
+            <button id="btn-send-chat" type="submit" class="btn-primary btn-chat-send" title="Send Message">
+              ➤
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Emoji Reactions Bar -->
+    <div class="reactions-bar">
+      <button class="btn-reaction" data-emoji="🔥" title="Fire">🔥</button>
+      <button class="btn-reaction" data-emoji="❤️" title="Love">❤️</button>
+      <button class="btn-reaction" data-emoji="🎵" title="Music">🎵</button>
+      <button class="btn-reaction" data-emoji="🕺" title="Dance">🕺</button>
+      <button class="btn-reaction" data-emoji="💃" title="Party">💃</button>
+      <button class="btn-reaction" data-emoji="🎉" title="Celebrate">🎉</button>
+    </div>
+
+    <!-- Floating Direct Chat Shortcut Button -->
+    <button id="btn-floating-chat" class="floating-chat-btn" title="Open Live Room Chat" type="button">
+      <span>💬</span> Live Chat <span id="float-chat-unread-badge" class="chat-badge" style="display:none;">0</span>
+    </button>
+  </div>
+
+  <!-- QR Code & Invite Modal -->
+  <div id="qr-modal" class="modal-overlay">
+    <div class="modal-box">
+      <h3 style="font-size:1.2rem;">📲 Invite Friends to Party</h3>
+      
+      <!-- Highlighted 6-digit room code box -->
+      <div style="background: rgba(0, 242, 254, 0.08); border: 1px solid rgba(0, 242, 254, 0.35); border-radius: 14px; padding: 12px; margin: 2px 0;">
+        <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700; letter-spacing: 1px;">6-Digit Party Code</div>
+        <div id="qr-modal-code" style="font-size: 2.2rem; font-weight: 800; color: #00f2fe; letter-spacing: 4px; font-variant-numeric: tabular-nums; margin: 4px 0;">849201</div>
+        <button id="btn-copy-code-only" class="btn-primary" style="background: rgba(0, 242, 254, 0.2); border: 1px solid #00f2fe; color: #00f2fe; height: 32px; font-size: 0.8rem; margin: 0 auto; padding: 4px 14px; cursor: pointer;">
+          📋 Copy 6-Digit Code
+        </button>
+      </div>
+
+      <p style="font-size:0.8rem; color:var(--text-muted); margin: 0;">
+        Or scan this QR code with mobile camera to join immediately:
+      </p>
+      <img id="qr-img" class="modal-qr-img" alt="QR Code">
+      <div class="share-link-box">
+        <input type="text" id="share-link-input" readonly style="background:transparent; border:none; color:inherit; width:100%; text-align:center; outline:none;">
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button id="btn-copy-link" class="btn-primary" style="flex:1; justify-content:center; height:42px;">
+          🔗 Copy Link
+        </button>
+        <button id="btn-close-modal" class="btn-icon" style="flex:1; justify-content:center; height:42px;">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Admin Login Modal -->
+  <div id="admin-modal" class="modal-overlay" style="z-index: 1000001;">
+    <div class="modal-box">
+      <h3 id="admin-modal-title" style="font-size:1.2rem;">🔒 Admin Verification</h3>
+      
+      <!-- Normal Password Form -->
+      <div id="admin-pass-section">
+        <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom: 8px;">Enter Master Password to access Admin Tools:</p>
+        <input type="password" id="admin-pass-input" class="text-input" placeholder="Password" style="text-align:center; font-size:1.1rem; letter-spacing:3px;">
+        <div id="admin-login-error" style="color:#ff4d4d; font-size:0.82rem; display:none; margin: 4px 0;"></div>
+        <div style="text-align:right; margin: 6px 0 10px;">
+          <a href="#" id="link-admin-forgot" style="color:var(--accent-cyan); font-size:0.78rem; text-decoration:none; font-weight:600;">❓ Forgot Password?</a>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button id="btn-submit-admin" class="btn-primary" style="flex:1; justify-content:center; height:42px;">Login</button>
+          <button id="btn-cancel-admin" class="btn-icon" style="flex:1; justify-content:center; height:42px;">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Forgot Password / Security Question Section -->
+      <div id="admin-forgot-section" style="display:none; text-align:left;">
+        <div style="background:rgba(0, 242, 254, 0.08); border:1px solid rgba(0, 242, 254, 0.3); border-radius:12px; padding:10px; margin-bottom:10px;">
+          <div style="font-size:0.75rem; color:var(--accent-cyan); font-weight:700; text-transform:uppercase;">Security Question / সুরক্ষা প্রশ্ন:</div>
+          <div style="font-size:0.85rem; color:#fff; font-weight:600; margin-top:2px;">What is your secret verification phrase?</div>
+        </div>
+        <input type="text" id="admin-sec-answer" class="text-input" placeholder="Enter secret phrase..." style="width:100%; margin-bottom:8px; font-size:0.95rem;" autocomplete="off">
+        <input type="password" id="admin-new-pass" class="text-input" placeholder="New Password (optional)" style="width:100%; margin-bottom:8px; font-size:0.95rem;" autocomplete="off">
+        <div id="admin-forgot-error" style="color:#ff4d4d; font-size:0.82rem; margin-bottom:8px; display:none;"></div>
+        <div style="display:flex; gap:8px;">
+          <button id="btn-submit-admin-forgot" class="btn-primary" style="flex:2; justify-content:center; height:40px; background:linear-gradient(135deg, #00f2fe, #4facfe); color:#000; font-weight:700;">
+            Verify & Login 👑
+          </button>
+          <button id="btn-back-admin-login" class="btn-icon" style="flex:1; justify-content:center; height:40px;">Back</button>
+        </div>
+      </div>
+
+      <!-- Admin Logged-In Control Panel View -->
+      <div id="admin-dashboard-section" style="display: none; text-align: left;">
+        <div class="admin-maintenance-control-card">
+          <div class="amc-header">
+            <span class="amc-icon">🚧</span>
+            <div>
+              <h4 style="margin:0; font-size:1rem; color:#ffd166;">Website Under Maintenance</h4>
+              <p style="margin:2px 0 0; font-size:0.78rem; color:var(--text-muted);">
+                When ON, public visitors cannot enter. Only Admin can test the site.
+              </p>
+            </div>
+          </div>
+          <div class="amc-status-row">
+            <div style="font-size:0.85rem;">
+              Status: <strong id="admin-maintenance-status-badge" style="color:#10b981;">OFF (Public Active)</strong>
+            </div>
+            <button id="btn-toggle-maintenance" type="button" class="btn-primary is-inactive">
+              🚧 Turn ON Maintenance Mode
+            </button>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 8px; margin-top: 14px;">
+          <button id="btn-admin-logout" type="button" class="btn-icon" style="flex: 1; justify-content: center; height: 42px; color: #ff4d4d; border: 1px solid rgba(255, 77, 77, 0.35); font-size: 0.85rem; font-weight: 600; cursor: pointer;">
+            🚪 Logout Admin
+          </button>
+          <button id="btn-close-admin-panel" type="button" class="btn-primary" style="flex: 1; justify-content: center; height: 42px; font-size: 0.85rem; font-weight: 600; cursor: pointer;">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Kicked Overlay (Shown to kicked user) -->
+  <div id="kicked-overlay" class="modal-overlay" style="z-index:99999;">
+    <div class="modal-box" style="border: 2px solid #ff4d4d; max-width: 400px; text-align: center;">
+      <div style="font-size:3.5rem;">🚫</div>
+      <h3 style="color:#ff4d4d; font-size:1.3rem;">Removed From Party</h3>
+      <p style="font-size:0.9rem; color:var(--text-muted); line-height:1.4;">
+        You have been removed from this party by the Admin.
+      </p>
+      <button id="btn-kicked-home" class="btn-primary" style="margin-top:16px; background:#ff4d4d; border:none; width:100%; padding:10px 18px; border-radius:12px; font-weight:700; cursor:pointer;">
+        🔄 Join Another Room
+      </button>
+    </div>
+  </div>
+
+  <!-- Welcome / 6-Digit Room & Guest Entry Modal -->
+  <div id="welcome-modal" class="modal-overlay open" style="z-index: 10000;">
+    <div class="modal-box" style="max-width: 440px; text-align: center;">
+      <div style="font-size: 2.8rem; line-height: 1; margin-bottom: 2px;">🎵</div>
+      <h2 style="font-size: 1.4rem; font-weight: 800; background: var(--party-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+        Welcome to SyncTunes!
+      </h2>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: -6px;">
+        Listen together in perfect real-time sync with friends
+      </p>
+
+      <!-- Main Mode Switcher: Guest Entry vs Admin Login -->
+      <div style="display: flex; gap: 6px; background: rgba(255, 255, 255, 0.08); padding: 4px; border-radius: 14px; border: 1px solid var(--border-color); margin: 4px 0 10px;">
+        <button id="welcome-tab-guest" type="button" class="welcome-mode-tab active" style="flex: 1;">
+          👤 Guest Entry
+        </button>
+        <button id="welcome-tab-admin" type="button" class="welcome-mode-tab admin-tab" style="flex: 1;">
+          👑 Admin Login
+        </button>
+      </div>
+
+      <!-- VIEW A: Guest Entry (Name + Avatar + Create/Join 6-Digit Room) -->
+      <div id="welcome-guest-section">
+        <!-- Step 1: Guest Profile -->
+        <div style="display: flex; flex-direction: column; gap: 12px; text-align: left;">
+          <div>
+            <label style="font-size: 0.85rem; font-weight: 700; color: #fff; margin-bottom: 6px; display: block;">
+              👤 Your Name <span style="color:#ff4d4d; font-weight:700;">* (Mandatory / নাম আবশ্যক)</span>:
+            </label>
+            <input type="text" id="guest-name-input" class="text-input" placeholder="Type your name (নাম লিখুন)..." maxlength="25" style="width: 100%; font-size: 1rem; padding: 12px 14px; border-radius: 12px;" required autocomplete="off">
+            <div id="guest-name-error" style="color: #ff4d4d; font-size: 0.82rem; font-weight: 600; margin-top: 5px; display: none;">⚠️ নাম দেওয়া বাধ্যতামূলক! দয়া করে আপনার নাম লিখুন।</div>
+          </div>
+
+          <div>
+            <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-main); margin-bottom: 5px; display: block;">
+              🎭 Pick an Avatar:
+            </label>
+            <div id="avatar-picker" class="avatar-picker-row">
+              <button type="button" class="avatar-option selected" data-avatar="🎧">🎧</button>
+              <button type="button" class="avatar-option" data-avatar="🔥">🔥</button>
+              <button type="button" class="avatar-option" data-avatar="⚡">⚡</button>
+              <button type="button" class="avatar-option" data-avatar="🚀">🚀</button>
+              <button type="button" class="avatar-option" data-avatar="🌟">🌟</button>
+              <button type="button" class="avatar-option" data-avatar="💃">💃</button>
+              <button type="button" class="avatar-option" data-avatar="🕺">🕺</button>
+              <button type="button" class="avatar-option" data-avatar="🎸">🎸</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 2: 6-Digit Room Mode (Create vs Join) -->
+        <div style="margin-top: 10px; text-align: left;">
+          <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-main); margin-bottom: 8px; display: block;">
+            🎶 Party Room Selection:
+          </label>
+          
+          <!-- Tab selector for Create / Join -->
+          <div style="display: flex; gap: 6px; background: rgba(255, 255, 255, 0.05); padding: 4px; border-radius: 12px; border: 1px solid var(--border-color); margin-bottom: 12px;">
+            <button id="tab-create-room" type="button" class="room-tab-btn active" style="flex: 1; padding: 8px;">
+              ✨ Create Room
+            </button>
+            <button id="tab-join-room" type="button" class="room-tab-btn" style="flex: 1; padding: 8px;">
+              🔢 Join with Code
+            </button>
+          </div>
+
+          <!-- Panel 1: Create Room (Generates 6-digit code) -->
+          <div id="panel-create-room" style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="background: rgba(0, 242, 254, 0.08); border: 1px dashed rgba(0, 242, 254, 0.4); border-radius: 14px; padding: 12px; text-align: center;">
+              <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">New 6-Digit Room Code:</div>
+              <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 4px;">
+                <span id="generated-room-code" style="font-size: 2.1rem; font-weight: 800; letter-spacing: 4px; color: #00f2fe; font-variant-numeric: tabular-nums;">849201</span>
+                <button id="btn-refresh-code" type="button" class="btn-mini" title="Generate New Code" style="font-size: 1.1rem; padding: 4px 8px; cursor: pointer;">🔄</button>
+              </div>
+              <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 2px;">Your friends can join using this 6-digit code!</div>
+            </div>
+            <button id="btn-create-room-submit" class="btn-primary" style="justify-content: center; height: 46px; font-size: 1rem; font-weight: 700; box-shadow: 0 4px 18px rgba(0, 242, 254, 0.4); background: linear-gradient(135deg, #00f2fe, #4facfe); color: #000; cursor: pointer;">
+              🚀 Create & Enter Room
+            </button>
+          </div>
+
+          <!-- Panel 2: Join with 6-digit Code -->
+          <div id="panel-join-room" style="display: none; flex-direction: column; gap: 10px;">
+            <div style="text-align: center;">
+              <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 6px;">Enter Friend's 6-Digit Room Code:</label>
+              <input type="text" id="join-room-code-input" class="text-input" placeholder="e.g. 849201" maxlength="6" inputmode="numeric" style="width: 100%; font-size: 1.4rem; padding: 10px 14px; text-align: center; letter-spacing: 5px; font-weight: 800; font-variant-numeric: tabular-nums;">
+              <div id="join-room-error" style="color: #ff4d4d; font-size: 0.82rem; margin-top: 6px; display: none; line-height: 1.3;"></div>
+            </div>
+            <button id="btn-join-room-submit" class="btn-primary" style="justify-content: center; height: 46px; font-size: 1rem; font-weight: 700; box-shadow: 0 4px 18px rgba(247, 37, 133, 0.45); cursor: pointer;">
+              🎉 Join Friend's Room
+            </button>
+          </div>
+        </div>
+
+        <!-- Quick Switch to Admin -->
+        <div style="margin-top: 14px; text-align: center;">
+          <button id="btn-toggle-admin-entry" type="button" style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.15); color: #ffd166; font-size: 0.82rem; font-weight: 600; padding: 7px 14px; border-radius: 10px; cursor: pointer; transition: all 0.2s ease;">
+            👑 Want to login as Admin instead? Tap here
+          </button>
+        </div>
+      </div>
+
+      <!-- VIEW B: Admin Login (Password + Secret Recovery) -->
+      <div id="welcome-admin-section" style="display: none; text-align: left;">
+        <div style="background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 209, 102, 0.4); border-radius: 14px; padding: 16px;">
+          <!-- Password View -->
+          <div id="entry-admin-pass-view">
+            <label style="font-size: 0.82rem; color: #ffd166; font-weight: 700; display: block; margin-bottom: 6px;">
+              👑 Master Admin Password:
+            </label>
+            <input type="password" id="entry-admin-pass" class="text-input" placeholder="Password" style="text-align: center; letter-spacing: 2px; width: 100%; margin-bottom: 4px; font-size: 1rem;">
+            <div id="entry-admin-error" style="color: #ff4d4d; font-size: 0.8rem; margin-bottom: 6px; display: none;"></div>
+            <div style="text-align: right; margin-bottom: 10px;">
+              <a href="#" id="link-entry-admin-forgot" style="color: var(--accent-cyan); font-size: 0.78rem; text-decoration: none; font-weight: 600;">❓ Forgot Password?</a>
+            </div>
+            <button id="btn-submit-entry-admin" class="btn-primary" style="background: linear-gradient(135deg, #ffd166, #ff9f1c); color: #000; font-weight: 700; width: 100%; justify-content: center; height: 44px; font-size: 0.95rem; cursor: pointer;">
+              Verify & Enter as Admin 👑
+            </button>
+          </div>
+
+          <!-- Forgot Password View -->
+          <div id="entry-admin-forgot-view" style="display: none;">
+            <div style="background: rgba(0, 242, 254, 0.08); border: 1px solid rgba(0, 242, 254, 0.3); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px;">
+              <div style="font-size: 0.72rem; color: var(--accent-cyan); font-weight: 700; text-transform: uppercase;">Security Question / সুরক্ষা প্রশ্ন:</div>
+              <div style="font-size: 0.82rem; color: #fff; font-weight: 600; margin-top: 2px;">What is your secret verification phrase?</div>
+            </div>
+            <input type="text" id="entry-admin-sec-answer" class="text-input" placeholder="Enter secret phrase..." style="width: 100%; margin-bottom: 6px; font-size: 0.92rem;" autocomplete="off">
+            <input type="password" id="entry-admin-new-pass" class="text-input" placeholder="New Password (optional)" style="width: 100%; margin-bottom: 6px; font-size: 0.92rem;" autocomplete="off">
+            <div id="entry-admin-forgot-error" style="color: #ff4d4d; font-size: 0.8rem; margin-bottom: 6px; display: none;"></div>
+            <div style="display: flex; gap: 6px;">
+              <button id="btn-submit-entry-forgot" type="button" class="btn-primary" style="flex: 2; background: linear-gradient(135deg, #00f2fe, #4facfe); color: #000; font-weight: 700; height: 38px; font-size: 0.85rem; cursor: pointer;">
+                Verify & Enter 👑
+              </button>
+              <button id="btn-back-entry-login" type="button" class="btn-icon" style="flex: 1; height: 38px; font-size: 0.82rem; cursor: pointer;">
+                Back
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fullscreen Website Under Maintenance Overlay (Visible to Public when Maintenance Mode is ON) -->
+  <div id="maintenance-overlay" class="maintenance-overlay" style="display: none;">
+    <div class="maintenance-card">
+      <div class="maintenance-glow"></div>
+      <div class="maintenance-icon">🚧</div>
+      <h1 class="maintenance-title">Website Under Maintenance</h1>
+      <div class="maintenance-status-badge">🛠️ Routine Maintenance & Updates</div>
+      <p class="maintenance-desc">
+        আমরা SyncTunes সাইটে জরুরি সিস্টেম আপডেট ও চেক করছি।<br>
+        সাধারণ ব্যবহারকারীদের জন্য সাইট সাময়িকভাবে বন্ধ আছে। কিছুক্ষণের মধ্যেই আবার চালু হবে!
+      </p>
+      <div class="maintenance-info-box">
+        <span>⚙️ Server Status: Sync Engine Updates & Testing</span>
+      </div>
+      
+      <!-- Admin Login Portal on Maintenance Page -->
+      <div class="maintenance-admin-portal">
+        <div class="maintenance-admin-hint">Are you the Website Administrator?</div>
+        <button id="btn-maintenance-admin" class="btn-primary" type="button">
+          👑 Admin Login & Verify Website
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- App scripts -->
+  <script src="/js/sync-engine.js"></script>
+  <script src="/js/player.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
