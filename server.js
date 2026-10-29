@@ -65,6 +65,29 @@ app.use('/uploads', express.static(UPLOADS_DIR, {
   }
 }));
 
+// ========================================================
+// 📱 In-App Auto-Update Endpoint for SyncTunes Android App
+// ========================================================
+app.get('/api/app-version', (req, res) => {
+  res.json({
+    versionCode: 1, // Change this to 2, 3... whenever you release a new APK!
+    versionName: "1.0.0",
+    apkUrl: "https://music-together-tr1h.onrender.com/download/latest.apk",
+    releaseNotes: "• Zero-delay precision audio sync\n• Fixed track auto-skipping\n• Modern mobile player UI",
+    forceUpdate: false
+  });
+});
+
+// Serve the latest APK for in-app downloads
+app.get('/download/latest.apk', (req, res) => {
+  const apkPath = path.join(__dirname, 'public', 'downloads', 'SyncTunes-latest.apk');
+  if (fs.existsSync(apkPath)) {
+    res.download(apkPath, 'SyncTunes-latest.apk');
+  } else {
+    res.status(404).json({ error: 'No APK update uploaded yet. Place SyncTunes-latest.apk in public/downloads/' });
+  }
+});
+
 // SEO: Robots.txt & Sitemap for Google Search Console
 app.get('/robots.txt', (req, res) => {
   res.type('text/plain');
