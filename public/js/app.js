@@ -12,6 +12,26 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   let newGeneratedCode = generate6DigitCode();
 
+  // Automatic in-app update check for Web and WebView
+  function checkWebAutoUpdate() {
+    fetch('/api/app-version')
+      .then(r => r.json())
+      .then(data => {
+        if (data && data.versionCode) {
+          const banner = document.getElementById('app-update-banner');
+          const title = document.getElementById('update-banner-title');
+          const desc = document.getElementById('update-banner-desc');
+          if (banner) {
+            if (title) title.textContent = `🎉 New Update Available (v${data.versionName || 'latest'})!`;
+            if (desc && data.releaseNotes) desc.textContent = data.releaseNotes.split('\n')[0] || 'Tap to update app';
+            banner.style.display = 'block';
+          }
+        }
+      })
+      .catch(() => {});
+  }
+  setTimeout(checkWebAutoUpdate, 2000);
+
   // DOM Elements
   const roomNameEl = document.getElementById('room-name');
   const btnCopyRoomCode = document.getElementById('btn-copy-room-code');
