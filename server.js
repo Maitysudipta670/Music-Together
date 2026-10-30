@@ -75,8 +75,8 @@ app.get('/api/app-version', (req, res) => {
     versionCode: 7,
     versionName: "1.6.0",
     apkUrl: GITHUB_LATEST_APK_URL,
-    releaseNotes: "• Fixed YouTube Player (Error 153 resolved)\n• High-precision real-time music sync\n• Created with ❤️ by Sudipta • All Rights Reserved",
-    forceUpdate: false
+    releaseNotes: "• Fixed YouTube Player (Error 153 resolved)\n• High-precision real-time music sync",
+    forceUpdate: true
   });
 });
 
