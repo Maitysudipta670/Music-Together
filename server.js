@@ -68,15 +68,15 @@ app.use('/uploads', express.static(UPLOADS_DIR, {
 // ========================================================
 // 📱 In-App Auto-Update Endpoint for SyncTunes Android App
 // ========================================================
-const GITHUB_LATEST_APK_URL = "https://github.com/Maitysudipta670/Music-Together/releases/download/v1.6.0/SyncTunes-v1.6.0.apk";
+const GITHUB_LATEST_APK_URL = "https://github.com/Maitysudipta670/Music-Together/releases/download/v1.7.0/SyncTunes-v1.7.0.apk";
 
 app.get('/api/app-version', (req, res) => {
   res.json({
-    versionCode: 7,
-    versionName: "1.6.0",
+    versionCode: 8,
+    versionName: "1.7.0",
     apkUrl: GITHUB_LATEST_APK_URL,
-    releaseNotes: "• Fixed YouTube Player (Error 153 resolved)\n• High-precision real-time music sync",
-    forceUpdate: true
+    releaseNotes: "•Bugs Fixed",
+    forceUpdate: false
   });
 });
 
