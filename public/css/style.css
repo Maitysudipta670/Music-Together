@@ -137,10 +137,38 @@ header {
   gap: 4px;
 }
 
+.header-version-badge {
+  font-size: 0.65rem;
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: rgba(0, 242, 254, 0.12);
+  color: #00f2fe;
+  border: 1px solid rgba(0, 242, 254, 0.35);
+  font-weight: 700;
+  vertical-align: middle;
+}
+
 .header-actions {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.btn-update-pill {
+  color: #00f2fe !important;
+  border: 1px solid rgba(0, 242, 254, 0.5) !important;
+  background: linear-gradient(135deg, rgba(0, 242, 254, 0.15), rgba(79, 172, 254, 0.2)) !important;
+  font-weight: 700 !important;
+  box-shadow: 0 2px 8px rgba(0, 242, 254, 0.2);
+  white-space: nowrap;
+}
+
+.btn-update-pill:hover, .btn-update-pill:active {
+  background: linear-gradient(135deg, rgba(0, 242, 254, 0.3), rgba(79, 172, 254, 0.35)) !important;
+  box-shadow: 0 4px 14px rgba(0, 242, 254, 0.4);
+  transform: translateY(-1px);
 }
 
 .btn-icon {
@@ -875,6 +903,31 @@ header {
   .app-container {
     padding: 10px;
     gap: 12px;
+  }
+  header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 10px 12px;
+  }
+  .header-actions {
+    justify-content: space-between;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .header-actions .btn-icon {
+    padding: 6px 10px;
+    font-size: 0.78rem;
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+  .admin-control-strip {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .acs-right, .acs-actions {
+    justify-content: flex-end;
   }
   .player-card {
     padding: 16px;

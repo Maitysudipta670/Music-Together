@@ -76,7 +76,10 @@
       <div class="logo-area">
         <div class="logo-icon">🎵</div>
         <div class="logo-text">
-          <h1>SyncTunes</h1>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <h1>SyncTunes</h1>
+            <span class="header-version-badge">v1.7.2</span>
+          </div>
           <div class="room-badge">
             <span id="room-name" style="font-weight:700; letter-spacing:1px;">#party</span>
             <button id="btn-copy-room-code" class="btn-mini" title="Copy 6-Digit Code" style="font-size:0.75rem; padding:2px 6px; background:rgba(255,255,255,0.08); border-radius:6px; margin-left:2px; cursor:pointer;">📋 Copy</button>
@@ -93,19 +96,19 @@
           <div class="ping-dot"></div>
           <span id="ping-ms">--ms</span>
         </div>
+        <button id="btn-header-check-update" class="btn-icon btn-update-pill" title="Check for App Updates" style="color:#00f2fe; border:1px solid rgba(0,242,254,0.45); background:rgba(0,242,254,0.12); font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
+          <span>🚀</span> <span style="font-size:0.82rem;">Updates</span>
+        </button>
         <button id="btn-switch-room" class="btn-icon" title="Switch or Create Room">
           <span>🔄</span> Room
         </button>
         <button id="btn-share" class="btn-icon" title="Invite Friends">
-          <span>📲</span> Share / QR
-        </button>
-        <button id="btn-header-check-update" class="btn-icon btn-update-pill" title="Check for App Updates" style="color: #00f2fe; border: 1px solid rgba(0, 242, 254, 0.4); background: rgba(0, 242, 254, 0.12); font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
-          <span>🚀</span> <span style="font-size: 0.8rem;">Update</span>
+          <span>📲</span> Share
         </button>
         <a id="btn-download-app" class="btn-icon" href="/download/latest.apk" title="Download Android App (APK)" style="text-decoration:none; display:inline-flex; align-items:center;">
           <span>📱</span> App
         </a>
-        <button id="btn-admin-login" class="btn-icon" title="Admin Login" style="padding:8px 10px;">
+        <button id="btn-admin-login" class="btn-icon" title="Admin Management" style="padding:8px 10px;">
           <span id="admin-badge-icon">🔒</span>
         </button>
       </div>
@@ -350,7 +353,7 @@
     <footer style="margin: 28px 0 20px; text-align: center; padding: 14px 10px; border-top: 1px solid rgba(255,255,255,0.08);">
       <div style="font-size: 0.84rem; color: #94a3b8; font-weight: 500; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;">
         <div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
-          <span>🎵 SyncTunes v1.7.1</span>
+          <span>🎵 SyncTunes v1.7.2</span>
           <span>•</span>
           <span>Created with ❤️ by <strong style="color: #00f2fe; font-weight: 700; letter-spacing: 0.5px;">Sudipta</strong></span>
         </div>
@@ -417,7 +420,7 @@
       <!-- Forgot Password / Security Question Section -->
       <div id="admin-forgot-section" style="display:none; text-align:left;">
         <div style="background:rgba(0, 242, 254, 0.08); border:1px solid rgba(0, 242, 254, 0.3); border-radius:12px; padding:10px; margin-bottom:10px;">
-          <div style="font-size:0.75rem; color:var(--accent-cyan); font-weight:700; text-transform:uppercase;">Security Question / সুরক্ষা প্রশ্ন:</div>
+          <div style="font-size:0.75rem; color:var(--accent-cyan); font-weight:700; text-transform:uppercase;">Security Verification Question:</div>
           <div style="font-size:0.85rem; color:#fff; font-weight:600; margin-top:2px;">What is your secret verification phrase?</div>
         </div>
         <input type="text" id="admin-sec-answer" class="text-input" placeholder="Enter secret phrase..." style="width:100%; margin-bottom:8px; font-size:0.95rem;" autocomplete="off">
@@ -506,10 +509,10 @@
         <div style="display: flex; flex-direction: column; gap: 12px; text-align: left;">
           <div>
             <label style="font-size: 0.85rem; font-weight: 700; color: #fff; margin-bottom: 6px; display: block;">
-              👤 Your Name <span style="color:#ff4d4d; font-weight:700;">* (Mandatory)</span>:
+              👤 Your Name <span style="color:#ff4d4d; font-weight:700;">* (Required)</span>:
             </label>
             <input type="text" id="guest-name-input" class="text-input" placeholder="Type your name..." maxlength="25" style="width: 100%; font-size: 1rem; padding: 12px 14px; border-radius: 12px;" required autocomplete="off">
-            <div id="guest-name-error" style="color: #ff4d4d; font-size: 0.82rem; font-weight: 600; margin-top: 5px; display: none;">PLEASE ENTER YOUR NAME</div>
+            <div id="guest-name-error" style="color: #ff4d4d; font-size: 0.82rem; font-weight: 600; margin-top: 5px; display: none;">⚠️ Name is required! Please enter your name.</div>
           </div>
 
           <div>
@@ -589,9 +592,14 @@
             <div style="font-size: 1.6rem; margin-bottom: 2px;">👑</div>
             <div style="font-size: 0.95rem; font-weight: 700; color: #10b981;">Admin Authenticated!</div>
             <div style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 10px;">Your Admin session is active. Enter room directly:</div>
-            <button id="btn-enter-existing-admin" type="button" class="btn-primary" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; font-weight: 700; width: 100%; justify-content: center; height: 42px; font-size: 0.95rem; cursor: pointer;">
-              🚀 Enter Room as Admin 👑
-            </button>
+            <div style="display: flex; gap: 8px;">
+              <button id="btn-enter-existing-admin" type="button" class="btn-primary" style="flex: 2; background: linear-gradient(135deg, #10b981, #059669); color: #fff; font-weight: 700; justify-content: center; height: 42px; font-size: 0.9rem; cursor: pointer;">
+                🚀 Enter as Admin 👑
+              </button>
+              <button id="btn-welcome-admin-logout" type="button" class="btn-icon" style="flex: 1; justify-content: center; height: 42px; color: #ff4d4d; border-color: rgba(255, 77, 77, 0.4); font-size: 0.82rem; font-weight: 600; cursor: pointer;" title="Logout Admin">
+                🚪 Logout
+              </button>
+            </div>
           </div>
 
           <!-- Password View -->
@@ -612,7 +620,7 @@
           <!-- Forgot Password View -->
           <div id="entry-admin-forgot-view" style="display: none;">
             <div style="background: rgba(0, 242, 254, 0.08); border: 1px solid rgba(0, 242, 254, 0.3); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px;">
-              <div style="font-size: 0.72rem; color: var(--accent-cyan); font-weight: 700; text-transform: uppercase;">Security Question</div>
+              <div style="font-size: 0.72rem; color: var(--accent-cyan); font-weight: 700; text-transform: uppercase;">Security Verification Question:</div>
               <div style="font-size: 0.82rem; color: #fff; font-weight: 600; margin-top: 2px;">What is your secret verification phrase?</div>
             </div>
             <input type="text" id="entry-admin-sec-answer" class="text-input" placeholder="Enter secret phrase..." style="width: 100%; margin-bottom: 6px; font-size: 0.92rem;" autocomplete="off">
@@ -640,8 +648,8 @@
       <h1 class="maintenance-title">Website Under Maintenance</h1>
       <div class="maintenance-status-badge">🛠️ Routine Maintenance & Updates</div>
       <p class="maintenance-desc">
-        We are currently updating and checking our SyncTunes system.<br>
-       The site is temporarily unavailable to general users. It will be back up shortly!
+        We are currently performing scheduled system updates and maintenance on SyncTunes.<br>
+        Public access is temporarily paused. Service will resume shortly!
       </p>
       <div class="maintenance-info-box">
         <span>⚙️ Server Status: Sync Engine Updates & Testing</span>

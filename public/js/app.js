@@ -60,7 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
       fetch((window.location.protocol === 'file:' ? 'https://music-together-tr1h.onrender.com' : '') + '/api/app-version')
         .then(r => r.json())
         .then(data => {
-          alert(`🎉 SyncTunes Status:\nLatest Version: v${data.versionName || '1.7.1'}\n\nEverything is up to date!`);
+          alert(`🎉 SyncTunes Status:\nLatest Version: v${data.versionName || '1.7.2'}\n\nEverything is up to date!`);
         })
         .catch(() => alert('Could not check update. Please check internet connection.'));
     }
@@ -74,6 +74,14 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnHeaderCheckUpdate = document.getElementById('btn-header-check-update');
   if (btnHeaderCheckUpdate) {
     btnHeaderCheckUpdate.addEventListener('click', triggerCheckForUpdates);
+  }
+
+  // If running inside Native Android App, hide redundant "Download App" button so header actions fit cleanly
+  if ((window.AndroidBridge && typeof window.AndroidBridge.isNativeApp === 'function') ||
+      (navigator.userAgent && navigator.userAgent.includes('SyncTunesNativeApp')) ||
+      window.location.protocol === 'file:') {
+    const btnAppDl = document.getElementById('btn-download-app');
+    if (btnAppDl) btnAppDl.style.display = 'none';
   }
 
   // Ensure soft keyboard reliably opens on Android WebView when any input or search box is tapped
@@ -115,7 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const finalName = inputVal || savedName;
     if (!finalName) {
       if (guestNameError) {
-        guestNameError.textContent = '⚠️ নাম দেওয়া বাধ্যতামূলক! দয়া করে আপনার নাম লিখুন।';
+        guestNameError.textContent = '⚠️ Name is required! Please enter your name.';
         guestNameError.style.display = 'block';
       }
       if (guestNameInput) {
@@ -125,7 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
           guestNameInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
         } catch (e) {}
       }
-      showToast('⚠️ নাম দেওয়া বাধ্যতামূলক! দয়া করে আপনার নাম লিখুন।');
+      showToast('⚠️ Name is required! Please enter your name.');
       return null;
     }
     if (guestNameError) guestNameError.style.display = 'none';
@@ -813,6 +821,13 @@ document.addEventListener('DOMContentLoaded', () => {
         btnEnterExistingAdmin.disabled = false;
         btnEnterExistingAdmin.textContent = '🚀 Enter Room as Admin 👑';
       });
+    });
+  }
+
+  const btnWelcomeAdminLogout = document.getElementById('btn-welcome-admin-logout');
+  if (btnWelcomeAdminLogout) {
+    btnWelcomeAdminLogout.addEventListener('click', () => {
+      handleAdminLogout();
     });
   }
 
@@ -2112,6 +2127,7 @@ document.addEventListener('DOMContentLoaded', () => {
     sessionStorage.removeItem('sync_admin_pass');
     if (adminBadgeIcon) adminBadgeIcon.textContent = '🔒';
     if (adminModal) adminModal.classList.remove('open');
+    if (adminPassInput) adminPassInput.value = '';
     const authCard = document.getElementById('entry-admin-authenticated-view');
     const passView = document.getElementById('entry-admin-pass-view');
     if (authCard && passView) {
@@ -2159,16 +2175,68 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   const submitAdminPass = () => {
-    const pass = adminPassInput.value.trim();
-    if (!pass) return;
+    const pass = adminPassInput ? adminPassInput.value.trim() : '';
+    if (!pass) {
+      if (adminLoginError) {
+        adminLoginError.textContent = 'Please enter password!';
+        adminLoginError.style.display = 'block';
+      }
+      return;
+    }
+
+    if (btnSubmitAdmin) {
+      btnSubmitAdmin.disabled = true;
+      btnSubmitAdmin.textContent = '⏳ Verifying...';
+    }
+
+    if (!socket.connected) {
+      socket.connect();
+    }
+
+    let isDone = false;
+    const safetyTimer = setTimeout(() => {
+      if (!isDone) {
+        isDone = true;
+        if (btnSubmitAdmin) {
+          btnSubmitAdmin.disabled = false;
+          btnSubmitAdmin.textContent = 'Login';
+        }
+        if (adminLoginError) {
+          adminLoginError.textContent = 'Connection timeout. Please retry.';
+          adminLoginError.style.display = 'block';
+        }
+      }
+    }, 4000);
 
     socket.emit('admin-login', { password: pass }, (res) => {
+      if (isDone) return;
+      isDone = true;
+      clearTimeout(safetyTimer);
+      if (btnSubmitAdmin) {
+        btnSubmitAdmin.disabled = false;
+        btnSubmitAdmin.textContent = 'Login';
+      }
+
       if (res && res.success) {
         isAdmin = true;
         localStorage.setItem('is_sync_admin', 'true');
         localStorage.setItem('sync_admin_pass', pass);
         sessionStorage.setItem('is_sync_admin', 'true');
         sessionStorage.setItem('sync_admin_pass', pass);
+
+        // Update user profile to crown 👑 so everyone in the room sees admin status immediately
+        let name = savedName || 'Admin';
+        if (!name.includes('Admin') && !name.includes('👑')) name = `${name} 👑`;
+        savedName = name;
+        selectedAvatar = '👑';
+        localStorage.setItem('sync_username', savedName);
+        localStorage.setItem('sync_avatar', selectedAvatar);
+        if (myProfilePill) myProfilePill.textContent = `${selectedAvatar} ${savedName}`;
+        if (guestNameInput) guestNameInput.value = savedName;
+        try {
+          socket.emit('update-profile', { userName: savedName, avatar: selectedAvatar });
+        } catch (e) {}
+
         updateMaintenanceUI();
         if (adminBadgeIcon) adminBadgeIcon.textContent = '👑';
         if (adminModal) adminModal.classList.remove('open');
@@ -2176,8 +2244,11 @@ document.addEventListener('DOMContentLoaded', () => {
         renderMp3Library(cachedMp3Tracks);
         showToast('👑 Admin Authenticated successfully!');
       } else {
-        adminLoginError.textContent = res?.message || 'Incorrect Password!';
-        adminLoginError.style.display = 'block';
+        if (adminLoginError) {
+          adminLoginError.textContent = res?.message || 'Incorrect Password!';
+          adminLoginError.style.display = 'block';
+        }
+        showToast('❌ Incorrect Admin Password');
       }
     });
   };
@@ -2191,6 +2262,11 @@ document.addEventListener('DOMContentLoaded', () => {
   if (btnCancelAdmin) {
     btnCancelAdmin.addEventListener('click', () => {
       if (adminModal) adminModal.classList.remove('open');
+    });
+  }
+  if (adminModal) {
+    adminModal.addEventListener('click', (e) => {
+      if (e.target === adminModal) adminModal.classList.remove('open');
     });
   }
 
