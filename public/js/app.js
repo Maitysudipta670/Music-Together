@@ -76,6 +76,22 @@ document.addEventListener('DOMContentLoaded', () => {
     btnHeaderCheckUpdate.addEventListener('click', triggerCheckForUpdates);
   }
 
+  // Ensure soft keyboard reliably opens on Android WebView when any input or search box is tapped
+  document.addEventListener('focusin', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+      if (window.AndroidBridge && typeof window.AndroidBridge.showSoftKeyboard === 'function') {
+        window.AndroidBridge.showSoftKeyboard();
+      }
+    }
+  });
+  document.addEventListener('click', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+      if (window.AndroidBridge && typeof window.AndroidBridge.showSoftKeyboard === 'function') {
+        window.AndroidBridge.showSoftKeyboard();
+      }
+    }
+  });
+
   // DOM Elements
   const roomNameEl = document.getElementById('room-name');
   const btnCopyRoomCode = document.getElementById('btn-copy-room-code');

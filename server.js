@@ -68,7 +68,7 @@ app.use('/uploads', express.static(UPLOADS_DIR, {
 // ========================================================
 // 📱 In-App Auto-Update Endpoint for SyncTunes Android App
 // ========================================================
-const GITHUB_LATEST_APK_URL = "https://github.com/Maitysudipta670/Music-Together/releases/download/V1.7.1/SyncTunes-v1.7.1.apk";
+const GITHUB_LATEST_APK_URL = "https://github.com/Maitysudipta670/Music-Together/releases/download/v1.7.1/SyncTunes-v1.7.1.apk";
 
 app.get('/api/app-version', (req, res) => {
   res.json({
