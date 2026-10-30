@@ -129,6 +129,7 @@ class UnifiedSyncPlayer {
     this.volume = 1.0;
     this.isUnlocked = false;
     this.lastSeekTime = 0; // cooldown to prevent seek spam
+    this.lastRateChangeTime = 0; // cooldown to prevent rapid speed flapping
     this.currentPlaybackRate = 1.0;
 
     // Callbacks
@@ -896,29 +897,69 @@ class UnifiedSyncPlayer {
 
       const absDrift = Math.abs(drift);
       const timeSinceLastSeek = Date.now() - this.lastSeekTime;
+      const timeSinceLastRateChange = Date.now() - (this.lastRateChangeTime || 0);
 
       if (this.activeType === 'youtube') {
-        // YouTube Player Drift Correction:
-        // YouTube IFrame API only supports standard playback rates (0.5, 1.0, 1.5, etc.)
-        // Passing fractional rates like 1.03/0.97 causes YouTube's internal audio processor
-        // to chop, reset buffer, and stutter!
-        // If drift is large (> 3.5s), do a clean snap seek. Otherwise, let it play naturally at 1.0x.
-        if (absDrift > 3.5 && timeSinceLastSeek > 4000) {
+        // YouTube Player Intelligent Speed Drift Correction:
+        // 1. Massive drift (> 5.5s) -> Snap seek to catch up instantly
+        if (absDrift > 5.5 && timeSinceLastSeek > 3500) {
           this.seek(expectedPos);
-        }
-        if (this.currentPlaybackRate !== 1.0) {
           this.setPlaybackRate(1.0);
+        }
+        // 2. High audible drift (> 0.5s) -> Noticeable speed catch-up (1.15x / 0.85x)
+        else if (absDrift > 0.5) {
+          if (timeSinceLastRateChange > 600 || this.currentPlaybackRate === 1.0) {
+            this.setPlaybackRate(drift < 0 ? 1.15 : 0.85);
+          }
+        }
+        // 3. Moderate drift (0.15s - 0.5s) -> Gentle speed catch-up (1.08x / 0.92x)
+        else if (absDrift > 0.15) {
+          if (timeSinceLastRateChange > 600 || this.currentPlaybackRate === 1.0) {
+            this.setPlaybackRate(drift < 0 ? 1.08 : 0.92);
+          }
+        }
+        // 4. Subtle drift (60ms - 150ms) -> Micro speed gliding (1.03x / 0.97x)
+        else if (absDrift > 0.06) {
+          if (timeSinceLastRateChange > 800 || this.currentPlaybackRate === 1.0) {
+            this.setPlaybackRate(drift < 0 ? 1.03 : 0.97);
+          }
+        }
+        // 5. Perfect sync (<= 60ms) -> Return smoothly to normal 1.0x
+        else {
+          if (this.currentPlaybackRate !== 1.0) {
+            this.setPlaybackRate(1.0);
+          }
         }
       } else if (this.activeType === 'mp3') {
         // HTML5 Audio (MP3 / Upload File) Precision Drift Correction:
-        // Generous deadband (<= 0.5s) prevents rate flapping and pitch distortion
-        if (absDrift > 3.0 && timeSinceLastSeek > 3000) {
+        // 1. Massive drift (> 2.5s) -> Snap seek
+        if (absDrift > 2.5 && timeSinceLastSeek > 2500) {
           this.seek(expectedPos);
           this.setPlaybackRate(1.0);
-        } else if (absDrift > 0.6) {
-          this.setPlaybackRate(drift < 0 ? 1.06 : 0.94);
-        } else {
-          this.setPlaybackRate(1.0);
+        }
+        // 2. Audible drift (> 0.4s) -> Smooth speed catch-up (1.12x / 0.88x)
+        else if (absDrift > 0.4) {
+          if (timeSinceLastRateChange > 600 || this.currentPlaybackRate === 1.0) {
+            this.setPlaybackRate(drift < 0 ? 1.12 : 0.88);
+          }
+        }
+        // 3. Noticeable drift (0.12s - 0.4s) -> Gentle speed gliding (1.05x / 0.95x)
+        else if (absDrift > 0.12) {
+          if (timeSinceLastRateChange > 600 || this.currentPlaybackRate === 1.0) {
+            this.setPlaybackRate(drift < 0 ? 1.05 : 0.95);
+          }
+        }
+        // 4. Tiny drift (40ms - 120ms) -> Micro speed gliding (1.02x / 0.98x)
+        else if (absDrift > 0.04) {
+          if (timeSinceLastRateChange > 800 || this.currentPlaybackRate === 1.0) {
+            this.setPlaybackRate(drift < 0 ? 1.02 : 0.98);
+          }
+        }
+        // 5. Perfect in-sync deadband (<= 40ms) -> Flat 1.0x
+        else {
+          if (this.currentPlaybackRate !== 1.0) {
+            this.setPlaybackRate(1.0);
+          }
         }
       }
     }, 250);
@@ -927,9 +968,13 @@ class UnifiedSyncPlayer {
   setPlaybackRate(rate) {
     if (this.currentPlaybackRate === rate) return;
     this.currentPlaybackRate = rate;
+    this.lastRateChangeTime = Date.now();
 
     if (this.activeType === 'mp3' || this.activeType === 'local') {
-      try { this.audioElement.playbackRate = rate; } catch (e) {}
+      try {
+        this.audioElement.preservesPitch = true;
+        this.audioElement.playbackRate = rate;
+      } catch (e) {}
     } else if (this.activeType === 'youtube' && this.ytReady && this.ytPlayer && typeof this.ytPlayer.setPlaybackRate === 'function') {
       try { this.ytPlayer.setPlaybackRate(rate); } catch (e) {}
     }
