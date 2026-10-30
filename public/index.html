@@ -276,30 +276,51 @@
         </div>
       </div>
 
-      <!-- Device Music (Offline & Local Storage Player) Pane -->
+      <!-- Device Music (Offline & Room Sync Player) Pane -->
       <div id="tab-device" class="tab-pane">
-        <div class="device-hero-banner">
-          <div class="device-banner-icon">📱</div>
-          <div class="device-banner-text">
-            <h4>Device Downloaded Songs (No Upload)</h4>
-            <p>Play songs stored on your device like a normal media player! Instant 0s play, zero data upload &amp; full offline support.</p>
+        <div class="device-hero-banner" style="display:flex; align-items:center; gap:12px; background:linear-gradient(135deg, rgba(0,242,254,0.12), rgba(79,172,254,0.08)); border:1px solid rgba(0,242,254,0.3); border-radius:14px; padding:12px 14px; margin-bottom:12px;">
+          <div class="device-banner-icon" style="font-size:2rem;">📱</div>
+          <div class="device-banner-text" style="flex:1;">
+            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px;">
+              <h4 style="margin:0; font-size:1rem; color:#00f2fe; font-weight:700;">Device Songs &amp; Room Sync</h4>
+              <span class="badge" style="background:rgba(0,242,254,0.2); color:#00f2fe; font-size:0.7rem; font-weight:700; padding:2px 8px; border-radius:10px;">⚡ Instant 0s Play + Room Share</span>
+            </div>
+            <p style="margin:4px 0 0; font-size:0.8rem; color:var(--text-muted); line-height:1.35;">
+              Play downloaded songs from phone storage like a built-in player! Tap <b>"🚀 Share in Room"</b> to sync &amp; play for everyone in the room simultaneously.
+            </p>
           </div>
         </div>
 
-        <!-- Action Buttons Row -->
-        <div class="device-actions-row">
-          <input type="file" id="device-file-input" accept="audio/*" multiple style="display:none;">
-          <input type="file" id="device-folder-input" webkitdirectory directory multiple style="display:none;">
+        <!-- Mode Toggle & Action Row -->
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <!-- Sharing Mode Selector -->
+          <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.04); border:1px solid var(--border-color); border-radius:10px; padding:6px 10px;">
+            <span style="font-size:0.8rem; font-weight:600; color:var(--text-primary);">📡 Room Sharing Mode:</span>
+            <div style="display:flex; gap:6px;">
+              <button id="btn-device-mode-room" type="button" class="btn-mini active" style="font-weight:700; padding:5px 12px; border-radius:8px; cursor:pointer;" title="Play on device & share to room">
+                🚀 Share with Room
+              </button>
+              <button id="btn-device-mode-solo" type="button" class="btn-mini" style="font-weight:600; padding:5px 12px; border-radius:8px; cursor:pointer;" title="Play only on this device">
+                🎧 Solo (Device Only)
+              </button>
+            </div>
+          </div>
 
-          <button id="btn-pick-device-files" class="btn-primary" type="button" style="flex:1; justify-content:center; gap:6px; height:42px;">
-            <span>📂</span> Choose Songs
-          </button>
-          <button id="btn-pick-device-folder" class="btn-icon" type="button" style="flex:1; justify-content:center; gap:6px; height:42px;">
-            <span>📁</span> Choose Folder
-          </button>
-          <button id="btn-clear-device-list" class="btn-mini" type="button" title="Clear Device Songs List" style="display:none; padding:8px 12px; color:#ff6b6b; border:1px solid rgba(255,100,100,0.3); background:rgba(255,50,50,0.1); border-radius:8px;">
-            <span>🗑️</span> Clear
-          </button>
+          <!-- Action Buttons Row -->
+          <div class="device-actions-row">
+            <input type="file" id="device-file-input" accept="audio/*" multiple style="display:none;">
+            <input type="file" id="device-folder-input" webkitdirectory directory multiple style="display:none;">
+
+            <button id="btn-pick-device-files" class="btn-primary" type="button" style="flex:1; justify-content:center; gap:6px; height:42px;">
+              <span>📂</span> Choose Songs
+            </button>
+            <button id="btn-pick-device-folder" class="btn-icon" type="button" style="flex:1; justify-content:center; gap:6px; height:42px;">
+              <span>📁</span> Choose Folder
+            </button>
+            <button id="btn-clear-device-list" class="btn-mini" type="button" title="Clear Device Songs List" style="display:none; padding:8px 12px; color:#ff6b6b; border:1px solid rgba(255,100,100,0.3); background:rgba(255,50,50,0.1); border-radius:8px;">
+              <span>🗑️</span> Clear
+            </button>
+          </div>
         </div>
 
         <!-- Filter & Toggles Bar -->
@@ -327,7 +348,7 @@
             <div style="font-size:2.4rem; margin-bottom:8px;">📱</div>
             <p style="font-weight:700; color:var(--text-primary); margin-bottom:4px; font-size:0.95rem;">No device songs selected</p>
             <p style="font-size:0.8rem; color:var(--text-muted); max-width:320px; margin:0 auto 14px; line-height:1.4;">
-              Select any downloaded MP3, M4A, or audio files from your Downloads or Music storage. Plays instantly without uploading!
+              Select any downloaded MP3, M4A, or audio files from your Downloads or Music storage. Plays instantly on your phone and shares to everyone in the room!
             </p>
             <button class="btn-primary" id="btn-pick-device-empty" type="button" style="margin:0 auto; padding:8px 22px; font-size:0.85rem;">
               📂 Choose Songs from Device
@@ -415,7 +436,7 @@
     <!-- App Bottom Signature -->
     <footer style="margin: 28px 0 20px; text-align: center; padding: 14px 10px; border-top: 1px solid rgba(255,255,255,0.08);">
       <div style="font-size: 0.84rem; color: #94a3b8; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 6px;">
-        <span>🎵 SyncTunes v1.3.0</span>
+        <span>🎵 SyncTunes v1.4.0</span>
         <span>•</span>
         <span>Created with ❤️ by <strong style="color: #00f2fe; font-weight: 700; letter-spacing: 0.5px;">Sudipta</strong></span>
       </div>
@@ -643,6 +664,16 @@
       <!-- VIEW B: Admin Login (Password + Secret Recovery) -->
       <div id="welcome-admin-section" style="display: none; text-align: left;">
         <div style="background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 209, 102, 0.4); border-radius: 14px; padding: 16px;">
+          <!-- Admin Already Logged-In Direct Entry Card -->
+          <div id="entry-admin-authenticated-view" style="display: none; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 12px; padding: 12px; margin-bottom: 12px; text-align: center;">
+            <div style="font-size: 1.6rem; margin-bottom: 2px;">👑</div>
+            <div style="font-size: 0.95rem; font-weight: 700; color: #10b981;">Admin Authenticated!</div>
+            <div style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 10px;">Your Admin session is active. Enter room directly:</div>
+            <button id="btn-enter-existing-admin" type="button" class="btn-primary" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; font-weight: 700; width: 100%; justify-content: center; height: 42px; font-size: 0.95rem; cursor: pointer;">
+              🚀 Enter Room as Admin 👑
+            </button>
+          </div>
+
           <!-- Password View -->
           <div id="entry-admin-pass-view">
             <label style="font-size: 0.82rem; color: #ffd166; font-weight: 700; display: block; margin-bottom: 6px;">

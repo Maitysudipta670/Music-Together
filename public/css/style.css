@@ -1811,3 +1811,27 @@ header {
   color: #10b981 !important;
   font-weight: 700;
 }
+
+#btn-device-mode-room.active {
+  background: linear-gradient(135deg, #00f2fe, #4facfe) !important;
+  color: #000 !important;
+  font-weight: 700;
+  box-shadow: 0 2px 10px rgba(0, 242, 254, 0.35);
+}
+
+#btn-device-mode-solo.active {
+  background: linear-gradient(135deg, #10b981, #059669) !important;
+  color: #fff !important;
+  font-weight: 700;
+  box-shadow: 0 2px 10px rgba(16, 185, 129, 0.35);
+}
+
+.device-shared-active {
+  background: rgba(0, 242, 254, 0.16) !important;
+  border: 1px solid rgba(0, 242, 254, 0.45) !important;
+}
+
+.device-shared-active .queue-item-title {
+  color: #00f2fe !important;
+  font-weight: 700;
+}

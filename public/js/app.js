@@ -2,7 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // 1. Setup Room & User info
   const urlParams = new URLSearchParams(window.location.search);
   const initialUrlRoom = (urlParams.get('room') || '').trim();
-  let currentRoomId = initialUrlRoom;
+  let currentRoomId = initialUrlRoom || (localStorage.getItem('sync_last_room') || '').trim();
   
   let savedName = localStorage.getItem('sync_username') || '';
   let selectedAvatar = localStorage.getItem('sync_avatar') || '🎧';
@@ -585,6 +585,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (res && res.success) {
           currentRoomId = targetCode;
+          localStorage.setItem('sync_last_room', currentRoomId);
           try {
             const newUrl = `${window.location.pathname}?room=${encodeURIComponent(currentRoomId)}`;
             window.history.replaceState({ room: currentRoomId }, '', newUrl);
@@ -665,6 +666,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (res && res.success) {
         currentRoomId = inputCode;
+        localStorage.setItem('sync_last_room', currentRoomId);
         try {
           const newUrl = `${window.location.pathname}?room=${encodeURIComponent(currentRoomId)}`;
           window.history.replaceState({ room: currentRoomId }, '', newUrl);
@@ -742,7 +744,29 @@ document.addEventListener('DOMContentLoaded', () => {
       welcomeTabGuest.classList.remove('active');
       if (welcomeGuestSection) welcomeGuestSection.style.display = 'none';
       if (welcomeAdminSection) welcomeAdminSection.style.display = 'block';
-      if (entryAdminPass) entryAdminPass.focus();
+
+      const savedPass = localStorage.getItem('sync_admin_pass') || sessionStorage.getItem('sync_admin_pass');
+      if (savedPass && entryAdminPass) entryAdminPass.value = savedPass;
+
+      const authCard = document.getElementById('entry-admin-authenticated-view');
+      const passView = document.getElementById('entry-admin-pass-view');
+      if (isAdmin && authCard && passView) {
+        authCard.style.display = 'block';
+        passView.style.display = 'none';
+      } else if (authCard && passView) {
+        authCard.style.display = 'none';
+        passView.style.display = 'block';
+        if (entryAdminPass) entryAdminPass.focus();
+      }
+    });
+  }
+
+  const btnEnterExistingAdmin = document.getElementById('btn-enter-existing-admin');
+  if (btnEnterExistingAdmin) {
+    btnEnterExistingAdmin.addEventListener('click', () => {
+      const savedPass = localStorage.getItem('sync_admin_pass') || sessionStorage.getItem('sync_admin_pass') || '246890';
+      if (entryAdminPass) entryAdminPass.value = savedPass;
+      handleAdminEntry();
     });
   }
 
@@ -778,6 +802,8 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.emit('admin-login', { password: pass }, (res) => {
       if (res && res.success) {
         isAdmin = true;
+        localStorage.setItem('is_sync_admin', 'true');
+        localStorage.setItem('sync_admin_pass', pass);
         sessionStorage.setItem('is_sync_admin', 'true');
         sessionStorage.setItem('sync_admin_pass', pass);
         updateMaintenanceUI();
@@ -799,6 +825,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const finishEnter = () => {
           currentRoomId = targetRoom;
+          localStorage.setItem('sync_last_room', currentRoomId);
           try {
             const newUrl = `${window.location.pathname}?room=${encodeURIComponent(currentRoomId)}`;
             window.history.replaceState({ room: currentRoomId }, '', newUrl);
@@ -976,8 +1003,11 @@ document.addEventListener('DOMContentLoaded', () => {
   socket.on('maintenance-status', (data) => {
     const prevMode = isMaintenanceMode;
     isMaintenanceMode = !!data.isMaintenanceMode;
-    if (data.isAdmin !== undefined) {
-      isAdmin = !!data.isAdmin;
+    const hasSavedAdmin = (localStorage.getItem('is_sync_admin') === 'true' && localStorage.getItem('sync_admin_pass'));
+    if (data.isAdmin) {
+      isAdmin = true;
+    } else if (!hasSavedAdmin) {
+      isAdmin = false;
     }
     updateMaintenanceUI();
 
@@ -988,27 +1018,52 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Auto-restore admin session if previously authenticated (persists across mobile browser restarts)
-  const savedAdminFlag = localStorage.getItem('is_sync_admin') || sessionStorage.getItem('is_sync_admin');
-  const savedAdminPass = localStorage.getItem('sync_admin_pass') || sessionStorage.getItem('sync_admin_pass');
-  if (savedAdminFlag === 'true' && savedAdminPass) {
-    socket.emit('admin-login', { password: savedAdminPass }, (res) => {
-      if (res && res.success) {
-        isAdmin = true;
-        const adminBadgeIcon = document.getElementById('admin-badge-icon');
-        if (adminBadgeIcon) adminBadgeIcon.textContent = '👑';
-        updateMaintenanceUI();
-        renderFriendsList(cachedUsers, cachedHostId);
-        renderMp3Library(cachedMp3Tracks);
-      } else {
-        localStorage.removeItem('is_sync_admin');
-        localStorage.removeItem('sync_admin_pass');
-        sessionStorage.removeItem('is_sync_admin');
-        sessionStorage.removeItem('sync_admin_pass');
-        updateMaintenanceUI();
+  // Reusable Auto-restore admin session (persists across mobile restarts, socket reconnects and page reloads)
+  function tryAutoRestoreAdmin() {
+    const savedAdminFlag = localStorage.getItem('is_sync_admin') || sessionStorage.getItem('is_sync_admin');
+    const savedAdminPass = localStorage.getItem('sync_admin_pass') || sessionStorage.getItem('sync_admin_pass');
+    if (savedAdminFlag === 'true' && savedAdminPass) {
+      isAdmin = true; // Optimistically treat as admin so UI never shows maintenance blocker
+      if (entryAdminPass) entryAdminPass.value = savedAdminPass;
+      if (adminPassInput) adminPassInput.value = savedAdminPass;
+      const authCard = document.getElementById('entry-admin-authenticated-view');
+      const passView = document.getElementById('entry-admin-pass-view');
+      if (authCard && passView) {
+        authCard.style.display = 'block';
+        passView.style.display = 'none';
       }
-    });
+      updateMaintenanceUI();
+      socket.emit('admin-login', { password: savedAdminPass }, (res) => {
+        if (res && res.success) {
+          isAdmin = true;
+          localStorage.setItem('is_sync_admin', 'true');
+          localStorage.setItem('sync_admin_pass', savedAdminPass);
+          const adminBadgeIcon = document.getElementById('admin-badge-icon');
+          if (adminBadgeIcon) adminBadgeIcon.textContent = '👑';
+          updateMaintenanceUI();
+          renderFriendsList(cachedUsers, cachedHostId);
+          renderMp3Library(cachedMp3Tracks);
+        } else if (res && res.message && res.message.toLowerCase().includes('invalid')) {
+          localStorage.removeItem('is_sync_admin');
+          localStorage.removeItem('sync_admin_pass');
+          sessionStorage.removeItem('is_sync_admin');
+          sessionStorage.removeItem('sync_admin_pass');
+          isAdmin = false;
+          if (authCard && passView) {
+            authCard.style.display = 'none';
+            passView.style.display = 'block';
+          }
+          updateMaintenanceUI();
+        }
+      });
+    }
   }
+
+  // Restore on initial load and on every socket reconnect
+  tryAutoRestoreAdmin();
+  socket.on('connect', () => {
+    tryAutoRestoreAdmin();
+  });
 
   // 5. Sync Engine Updates (Latency & Clock Offset)
   let hasFirstClockSync = false;
@@ -1041,7 +1096,16 @@ document.addEventListener('DOMContentLoaded', () => {
         avatar: selectedAvatar,
         isAdmin: isAdmin
       }, (res) => {
-        if (res && !res.success) {
+        if (res && res.success) {
+          if (welcomeModal) {
+            welcomeModal.classList.remove('open');
+            welcomeModal.style.display = 'none';
+          }
+          if (roomNameEl) roomNameEl.textContent = '#' + currentRoomId;
+          if (qrModalCodeEl) qrModalCodeEl.textContent = currentRoomId;
+          if (myProfilePill) myProfilePill.textContent = `${selectedAvatar} ${savedName}`;
+          try { triggerUnlock(); } catch (e) {}
+        } else if (res && !res.success) {
           console.warn('Re-join room warning:', res.message);
           if (welcomeModal) {
             welcomeModal.style.display = 'flex';
@@ -1118,7 +1182,18 @@ document.addEventListener('DOMContentLoaded', () => {
     hasAdminInRoom = !!state.hasAdmin;
     if (!isLocalPlaybackMode) {
       updateUIFromState(state);
-      player.syncToState(state, false);
+      if (currentSharedServerTrack && state.currentTrack && state.currentTrack.id === currentSharedServerTrack.id) {
+        // Host is already playing this track seamlessly from local device file (0 bandwidth, 0 buffer)
+        updatePlayPauseButton(state.status === 'playing');
+        if (waveBarsContainer) {
+          if (state.status === 'playing') waveBarsContainer.classList.add('playing');
+          else waveBarsContainer.classList.remove('playing');
+        }
+      } else {
+        isSharingDeviceTrack = false;
+        currentSharedServerTrack = null;
+        player.syncToState(state, false);
+      }
       preloadNextQueueTrack(state.queue);
     }
     if (state.chatHistory && Array.isArray(state.chatHistory)) {
@@ -1378,7 +1453,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (now - lastControlAction < 300) return;
       lastControlAction = now;
 
-      if (isLocalPlaybackMode && localDeviceTracks.length > 0) {
+      if ((isLocalPlaybackMode || isSharingDeviceTrack || currentSharedServerTrack) && localDeviceTracks.length > 0) {
         playPrevLocalTrack();
         return;
       }
@@ -1392,7 +1467,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (now - lastControlAction < 300) return;
     lastControlAction = now;
 
-    if (isLocalPlaybackMode && localDeviceTracks.length > 0) {
+    if ((isLocalPlaybackMode || isSharingDeviceTrack || currentSharedServerTrack) && localDeviceTracks.length > 0) {
       playNextLocalTrack();
       return;
     }
@@ -1835,13 +1910,16 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ========================================================
-  // 📱 11B. Local Device Songs & Offline Media Player Engine
+  // 📱 11B. Local Device Songs & Room Sync Engine
   // ========================================================
   let localDeviceTracks = []; // Array of local audio objects
   let currentLocalTrackIndex = -1;
   let isLocalPlaybackMode = false;
   let isDeviceShuffle = false;
   let deviceRepeatMode = 'ALL'; // 'ALL' | 'ONE' | 'OFF'
+  let deviceSharingMode = 'ROOM'; // 'ROOM' (Stream to Room) | 'SOLO' (Device Only)
+  let currentSharedServerTrack = null;
+  let isSharingDeviceTrack = false;
 
   const deviceFileInput = document.getElementById('device-file-input');
   const deviceFolderInput = document.getElementById('device-folder-input');
@@ -1856,6 +1934,26 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnDeviceShuffle = document.getElementById('btn-device-shuffle');
   const btnDeviceRepeat = document.getElementById('btn-device-repeat');
   const btnSwitchToDeviceTab = document.getElementById('btn-switch-to-device-tab');
+  const btnDeviceModeRoom = document.getElementById('btn-device-mode-room');
+  const btnDeviceModeSolo = document.getElementById('btn-device-mode-solo');
+
+  if (btnDeviceModeRoom) {
+    btnDeviceModeRoom.addEventListener('click', () => {
+      deviceSharingMode = 'ROOM';
+      btnDeviceModeRoom.classList.add('active');
+      if (btnDeviceModeSolo) btnDeviceModeSolo.classList.remove('active');
+      showToast('📡 Room Sharing Mode ON: Selected songs will play on your device and share to room!');
+    });
+  }
+
+  if (btnDeviceModeSolo) {
+    btnDeviceModeSolo.addEventListener('click', () => {
+      deviceSharingMode = 'SOLO';
+      btnDeviceModeSolo.classList.add('active');
+      if (btnDeviceModeRoom) btnDeviceModeRoom.classList.remove('active');
+      showToast('🎧 Solo Mode: Selected songs will play only on your device locally.');
+    });
+  }
 
   if (btnSwitchToDeviceTab) {
     btnSwitchToDeviceTab.addEventListener('click', () => {
@@ -1909,6 +2007,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         localDeviceTracks = [];
         currentLocalTrackIndex = -1;
+        isSharingDeviceTrack = false;
+        currentSharedServerTrack = null;
         if (isLocalPlaybackMode) {
           player.stop();
           isLocalPlaybackMode = false;
@@ -1983,7 +2083,8 @@ document.addEventListener('DOMContentLoaded', () => {
         size: file.size,
         sizeStr: `${sizeMb} MB`,
         type: 'local',
-        isLocal: true
+        isLocal: true,
+        syncStatus: 'idle'
       });
       addedCount++;
     }
@@ -1992,8 +2093,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (addedCount > 0) {
       showToast(`Added ${addedCount} song${addedCount > 1 ? 's' : ''} from device!`);
-      if (!isLocalPlaybackMode && (!currentRoomState || currentRoomState.status !== 'playing')) {
-        playLocalTrack(localDeviceTracks.length - addedCount);
+      if (!isLocalPlaybackMode && !isSharingDeviceTrack && (!currentRoomState || currentRoomState.status !== 'playing')) {
+        const startIdx = localDeviceTracks.length - addedCount;
+        if (deviceSharingMode === 'ROOM') {
+          shareAndPlayDeviceSong(startIdx);
+        } else {
+          playLocalTrack(startIdx);
+        }
       }
     }
   }
@@ -2009,7 +2115,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <div style="font-size:2.4rem; margin-bottom:8px;">📱</div>
           <p style="font-weight:700; color:var(--text-primary); margin-bottom:4px; font-size:0.95rem;">No device songs selected</p>
           <p style="font-size:0.8rem; color:var(--text-muted); max-width:320px; margin:0 auto 14px; line-height:1.4;">
-            Select any downloaded MP3, M4A, or audio files from your Downloads or Music storage. Plays instantly without uploading!
+            Select any downloaded MP3, M4A, or audio files from your Downloads or Music storage. Plays instantly on your phone and shares to everyone in the room!
           </p>
           <button class="btn-primary" id="btn-pick-device-empty" type="button" style="margin:0 auto; padding:8px 22px; font-size:0.85rem;">
             📂 Choose Songs from Device
@@ -2038,21 +2144,39 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      const isCurrent = (isLocalPlaybackMode && currentLocalTrackIndex === originalIndex);
+      const isCurrent = (currentLocalTrackIndex === originalIndex);
+      const isSharedRoomActive = (isCurrent && (isSharingDeviceTrack || currentSharedServerTrack) && !isLocalPlaybackMode);
+      const isSoloActive = (isCurrent && isLocalPlaybackMode);
+
+      let syncBadge = '';
+      if (track.syncStatus === 'uploading') {
+        syncBadge = `<span class="badge" style="background:rgba(255,209,102,0.2); color:#ffd166; font-size:0.68rem; padding:1px 6px; border-radius:6px;">⏳ Syncing...</span>`;
+      } else if (track.syncStatus === 'shared') {
+        syncBadge = `<span class="badge" style="background:rgba(0,242,254,0.2); color:#00f2fe; font-size:0.68rem; padding:1px 6px; border-radius:6px;">📡 Room Synced</span>`;
+      } else if (track.syncStatus === 'failed') {
+        syncBadge = `<span class="badge" style="background:rgba(255,77,77,0.2); color:#ff4d4d; font-size:0.68rem; padding:1px 6px; border-radius:6px;">⚠️ Solo Only</span>`;
+      }
+
       const item = document.createElement('div');
-      item.className = `queue-item ${isCurrent ? 'device-song-active' : ''}`;
+      item.className = `queue-item ${isSharedRoomActive ? 'device-shared-active' : (isSoloActive ? 'device-song-active' : '')}`;
 
       item.innerHTML = `
         <div class="queue-item-info">
-          <span style="font-size:1.1rem;">${isCurrent ? '🔊' : '🎵'}</span>
+          <span style="font-size:1.2rem;">${isSharedRoomActive ? '📡' : (isSoloActive ? '🎧' : '🎵')}</span>
           <div style="display:flex; flex-direction:column; min-width:0;">
             <div class="queue-item-title">${escapeHtml(track.title)}</div>
-            <span style="font-size:0.72rem; color:var(--text-muted);">${track.sizeStr}</span>
+            <div style="display:flex; align-items:center; gap:6px; margin-top:2px;">
+              <span style="font-size:0.72rem; color:var(--text-muted);">${track.sizeStr}</span>
+              ${syncBadge}
+            </div>
           </div>
         </div>
-        <div class="queue-item-actions">
-          <button class="btn-mini btn-play-local" style="${isCurrent ? 'background:#10b981; color:#000; font-weight:700;' : ''}" title="Play Now">
-            ${isCurrent ? '▶ Playing' : '▶ Play'}
+        <div class="queue-item-actions" style="display:flex; gap:6px; align-items:center;">
+          <button class="btn-mini btn-share-room" style="${isSharedRoomActive ? 'background:linear-gradient(135deg,#00f2fe,#4facfe); color:#000; font-weight:700;' : 'background:rgba(0,242,254,0.15); color:#00f2fe; border:1px solid rgba(0,242,254,0.4);'}" title="Play on device & share to room">
+            🚀 ${isSharedRoomActive ? 'Playing in Room' : 'Share in Room'}
+          </button>
+          <button class="btn-mini btn-play-solo" style="${isSoloActive ? 'background:#10b981; color:#000; font-weight:700;' : 'background:rgba(255,255,255,0.06); color:var(--text-primary);'}" title="Play only on this device">
+            🎧 Solo
           </button>
           <button class="btn-mini btn-remove-local" style="color:#ff6b6b; border:1px solid rgba(255,100,100,0.3); background:rgba(255,50,50,0.08); padding:3px 6px;" title="Remove from list">
             ✕
@@ -2060,7 +2184,13 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
       `;
 
-      item.querySelector('.btn-play-local').addEventListener('click', () => {
+      item.querySelector('.btn-share-room').addEventListener('click', (e) => {
+        e.stopPropagation();
+        shareAndPlayDeviceSong(originalIndex);
+      });
+
+      item.querySelector('.btn-play-solo').addEventListener('click', (e) => {
+        e.stopPropagation();
         playLocalTrack(originalIndex);
       });
 
@@ -2069,8 +2199,112 @@ document.addEventListener('DOMContentLoaded', () => {
         removeLocalTrack(originalIndex);
       });
 
+      item.addEventListener('click', () => {
+        if (deviceSharingMode === 'ROOM') {
+          shareAndPlayDeviceSong(originalIndex);
+        } else {
+          playLocalTrack(originalIndex);
+        }
+      });
+
       deviceSongsListEl.appendChild(item);
     });
+  }
+
+  // Play immediately on host device & stream to room in background
+  async function shareAndPlayDeviceSong(index) {
+    if (index < 0 || index >= localDeviceTracks.length) return;
+    triggerUnlock();
+
+    currentLocalTrackIndex = index;
+    isLocalPlaybackMode = false;
+    isSharingDeviceTrack = true;
+    const track = localDeviceTracks[index];
+
+    // 1. Play instantly on host phone via blobUrl (0ms latency, built-in player experience!)
+    const localStandardTrack = {
+      id: track.id,
+      title: track.title,
+      type: 'local',
+      url: track.blobUrl,
+      size: track.size,
+      isLocal: true,
+      thumbnail: null
+    };
+
+    player.loadTrack(localStandardTrack, true, 0);
+    updateSharedDevicePlayerUI(track, true, 'syncing');
+    track.syncStatus = 'uploading';
+    renderDeviceSongsList();
+    showToast(`▶ Playing on device & sharing to room: ${track.title}...`);
+
+    // 2. Upload file in background so all connected devices can sync and stream
+    try {
+      const formData = new FormData();
+      formData.append('audio', track.file, track.name);
+
+      const resp = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await resp.json();
+
+      if (data && data.success && data.track) {
+        track.syncStatus = 'shared';
+        track.serverTrack = data.track;
+        currentSharedServerTrack = data.track;
+
+        // Current playback position on host
+        const currentPos = player.getCurrentTime();
+
+        // Broadcast to everyone in the room!
+        socket.emit('change-track', {
+          track: data.track,
+          autoplay: true,
+          position: currentPos
+        });
+
+        updateSharedDevicePlayerUI(track, true, 'shared');
+        renderDeviceSongsList();
+        showToast(`🎉 Shared! Room is now playing in sync 🎧`);
+      } else {
+        track.syncStatus = 'failed';
+        renderDeviceSongsList();
+        showToast('⚠️ Could not share to room. Playing locally.');
+      }
+    } catch (err) {
+      console.error('Error sharing device song:', err);
+      track.syncStatus = 'failed';
+      renderDeviceSongsList();
+      showToast('⚠️ Network issue sharing song. Playing locally.');
+    }
+  }
+
+  function updateSharedDevicePlayerUI(track, isPlaying, status) {
+    if (trackTitleEl) trackTitleEl.textContent = track.title || 'Device Track';
+    if (trackSubEl) {
+      const idxText = localDeviceTracks.length > 0 ? `(${currentLocalTrackIndex + 1}/${localDeviceTracks.length})` : '';
+      if (status === 'syncing') {
+        trackSubEl.innerHTML = `<span id="track-source" class="badge-source device">📱 DEVICE</span> <span style="font-size:0.75rem; color:#ffd166; font-weight:600; margin-left:6px;">⏳ Syncing to Room... ${idxText}</span>`;
+      } else if (status === 'shared') {
+        trackSubEl.innerHTML = `<span id="track-source" class="badge-source device" style="background:rgba(0,242,254,0.2); color:#00f2fe; border:1px solid rgba(0,242,254,0.4);">📡 ROOM SYNC</span> <span style="font-size:0.75rem; color:#00f2fe; font-weight:600; margin-left:6px;">Playing in Room ${idxText}</span>`;
+      } else {
+        trackSubEl.innerHTML = `<span id="track-source" class="badge-source local">📱 DEVICE</span> <span style="font-size:0.75rem; color:#10b981; font-weight:600; margin-left:6px;">Solo Offline ${idxText}</span>`;
+      }
+    }
+    if (coverImg) coverImg.style.display = 'none';
+    if (coverPlaceholder) {
+      coverPlaceholder.style.display = 'block';
+      coverPlaceholder.textContent = '📱';
+    }
+    const ytContainer = document.getElementById('youtube-player-container');
+    if (ytContainer) ytContainer.classList.remove('active');
+
+    updatePlayPauseButton(isPlaying);
+    if (waveBarsContainer) {
+      if (isPlaying) waveBarsContainer.classList.add('playing');
+      else waveBarsContainer.classList.remove('playing');
+    }
   }
 
   function playLocalTrack(index) {
@@ -2079,6 +2313,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     currentLocalTrackIndex = index;
     isLocalPlaybackMode = true;
+    isSharingDeviceTrack = false;
+    currentSharedServerTrack = null;
     const track = localDeviceTracks[index];
 
     const standardTrack = {
@@ -2094,7 +2330,7 @@ document.addEventListener('DOMContentLoaded', () => {
     player.loadTrack(standardTrack, true, 0);
     updateLocalPlayerUI(standardTrack, true);
     renderDeviceSongsList();
-    showToast(`▶ Playing: ${track.title}`);
+    showToast(`▶ Playing Solo: ${track.title}`);
   }
 
   function updateLocalPlayerUI(track, isPlaying) {
@@ -2132,7 +2368,11 @@ document.addEventListener('DOMContentLoaded', () => {
       do {
         randIndex = Math.floor(Math.random() * localDeviceTracks.length);
       } while (randIndex === currentLocalTrackIndex && localDeviceTracks.length > 1);
-      playLocalTrack(randIndex);
+      if (deviceSharingMode === 'ROOM' && !isLocalPlaybackMode) {
+        shareAndPlayDeviceSong(randIndex);
+      } else {
+        playLocalTrack(randIndex);
+      }
       return;
     }
 
@@ -2142,11 +2382,17 @@ document.addEventListener('DOMContentLoaded', () => {
         nextIndex = 0;
       } else {
         player.pause();
-        updateLocalPlayerUI(localDeviceTracks[currentLocalTrackIndex], false);
+        if (isLocalPlaybackMode) {
+          updateLocalPlayerUI(localDeviceTracks[currentLocalTrackIndex], false);
+        }
         return;
       }
     }
-    playLocalTrack(nextIndex);
+    if (deviceSharingMode === 'ROOM' && !isLocalPlaybackMode) {
+      shareAndPlayDeviceSong(nextIndex);
+    } else {
+      playLocalTrack(nextIndex);
+    }
   }
 
   function playPrevLocalTrack() {
@@ -2162,11 +2408,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (prevIndex < 0) {
       prevIndex = localDeviceTracks.length - 1;
     }
-    playLocalTrack(prevIndex);
+    if (deviceSharingMode === 'ROOM' && !isLocalPlaybackMode) {
+      shareAndPlayDeviceSong(prevIndex);
+    } else {
+      playLocalTrack(prevIndex);
+    }
   }
 
   function handleLocalTrackEnded() {
-    if (isLocalPlaybackMode && localDeviceTracks.length > 0) {
+    if ((isLocalPlaybackMode || isSharingDeviceTrack || currentSharedServerTrack) && localDeviceTracks.length > 0) {
       playNextLocalTrack();
       return true;
     }
@@ -2181,10 +2431,16 @@ document.addEventListener('DOMContentLoaded', () => {
     if (currentLocalTrackIndex === index) {
       if (localDeviceTracks.length > 0) {
         const nextIdx = index < localDeviceTracks.length ? index : 0;
-        playLocalTrack(nextIdx);
+        if (deviceSharingMode === 'ROOM' && !isLocalPlaybackMode) {
+          shareAndPlayDeviceSong(nextIdx);
+        } else {
+          playLocalTrack(nextIdx);
+        }
       } else {
         player.stop();
         isLocalPlaybackMode = false;
+        isSharingDeviceTrack = false;
+        currentSharedServerTrack = null;
         currentLocalTrackIndex = -1;
         updateUIFromState(currentRoomState || {});
       }
@@ -2323,7 +2579,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (adminForgotSection) adminForgotSection.style.display = 'none';
       if (adminDashboardSection) adminDashboardSection.style.display = 'none';
       if (adminPassInput) {
-        adminPassInput.value = '';
+        const savedPass = localStorage.getItem('sync_admin_pass') || sessionStorage.getItem('sync_admin_pass') || '';
+        adminPassInput.value = savedPass;
         setTimeout(() => adminPassInput.focus(), 100);
       }
       if (adminLoginError) adminLoginError.style.display = 'none';

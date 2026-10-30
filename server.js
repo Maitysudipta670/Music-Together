@@ -195,9 +195,8 @@ let ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '246890';
 const ADMIN_SECURITY_ANSWER = 'I am a good boy';
 
 // Global Website Maintenance / Staging Flag
-// Starts in Admin-Test Mode (true) on fresh deploy so Admin can test first before making site Live!
-// (Can be overridden to start directly Live by setting AUTO_MAINTENANCE=false in Render environment variables)
-let isMaintenanceMode = process.env.AUTO_MAINTENANCE === 'false' ? false : true;
+// Default is FALSE (Website is LIVE for everyone). Admin can toggle from Admin Panel.
+let isMaintenanceMode = process.env.AUTO_MAINTENANCE === 'true';
 
 // Maintenance status API endpoint
 app.get('/api/maintenance', (req, res) => {
@@ -390,11 +389,12 @@ class SyncRoom {
     this.updatedAt = now;
   }
 
-  setTrack(track, autoplay = true, atTimestamp = null) {
+  setTrack(track, autoplay = true, atTimestamp = null, initialPosition = 0) {
     this.version++;
     const now = atTimestamp || (autoplay ? (Date.now() + 700) : Date.now());
     this.currentTrack = track;
-    this.position = 0;
+    const startPos = (typeof initialPosition === 'number' && initialPosition > 0) ? initialPosition : (track && typeof track.initialPosition === 'number' ? track.initialPosition : 0);
+    this.position = Math.max(0, startPos);
     this.status = autoplay ? 'playing' : 'paused';
     this.updatedAt = now;
   }
@@ -723,14 +723,15 @@ io.on('connection', (socket) => {
   });
 
   // 6. Change / Play New Track (INSTANT CHANGE)
-  socket.on('change-track', ({ track, autoplay = true }) => {
+  socket.on('change-track', ({ track, autoplay = true, position = 0 }) => {
     if (isMaintenanceMode && !socket.isAdmin) return;
     if (!userRoomId) return;
     const room = rooms.get(userRoomId);
     if (!room) return;
 
     const startAt = Date.now();
-    room.setTrack(track, autoplay, startAt);
+    const initPos = (typeof position === 'number' && position > 0) ? position : 0;
+    room.setTrack(track, autoplay, startAt, initPos);
     io.to(userRoomId).emit('track-changed', {
       ...room.getState(),
       updatedAt: startAt,
