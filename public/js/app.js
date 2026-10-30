@@ -415,19 +415,13 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     },
     onTrackEnded: () => {
-      // Local Device Playback: Advance to next song in device playlist automatically
-      if (typeof handleLocalTrackEnded === 'function' && handleLocalTrackEnded()) {
-        return;
-      }
       // Auto play next track in queue (only host triggers queue advancement to prevent race condition)
       if (isHost) {
         socket.emit('next-track');
       }
     },
     onUserPrev: () => {
-      if (typeof playPrevLocalTrack === 'function') {
-        playPrevLocalTrack();
-      }
+      player.seek(0);
     },
     onUserPlay: (pos) => {
       if (isKickedFromRoom) return;
@@ -1140,11 +1134,9 @@ document.addEventListener('DOMContentLoaded', () => {
     cachedHostId = state.hostSocketId;
     isHost = (state.hostSocketId === socket.id);
     hasAdminInRoom = !!state.hasAdmin;
-    if (!isLocalPlaybackMode) {
-      updateUIFromState(state);
-      player.syncToState(state, false);
-      preloadNextQueueTrack(state.queue);
-    }
+    updateUIFromState(state);
+    player.syncToState(state, false);
+    preloadNextQueueTrack(state.queue);
     if (state.chatHistory && Array.isArray(state.chatHistory)) {
       renderChatHistory(state.chatHistory);
     }
@@ -1168,10 +1160,8 @@ document.addEventListener('DOMContentLoaded', () => {
       currentRoomState.currentTrack = syncData.currentTrack;
     }
 
-    if (!isLocalPlaybackMode) {
-      updatePlayPauseButton(syncData.status === 'playing');
-      player.syncToState(currentRoomState, !!syncData.isSeek);
-    }
+    updatePlayPauseButton(syncData.status === 'playing');
+    player.syncToState(currentRoomState, !!syncData.isSeek);
   });
 
   socket.on('track-changed', (state) => {
@@ -1180,22 +1170,9 @@ document.addEventListener('DOMContentLoaded', () => {
     cachedHostId = state.hostSocketId;
     isHost = (state.hostSocketId === socket.id);
     hasAdminInRoom = !!state.hasAdmin;
-    if (!isLocalPlaybackMode) {
-      updateUIFromState(state);
-      if (currentSharedServerTrack && state.currentTrack && state.currentTrack.id === currentSharedServerTrack.id) {
-        // Host is already playing this track seamlessly from local device file (0 bandwidth, 0 buffer)
-        updatePlayPauseButton(state.status === 'playing');
-        if (waveBarsContainer) {
-          if (state.status === 'playing') waveBarsContainer.classList.add('playing');
-          else waveBarsContainer.classList.remove('playing');
-        }
-      } else {
-        isSharingDeviceTrack = false;
-        currentSharedServerTrack = null;
-        player.syncToState(state, false);
-      }
-      preloadNextQueueTrack(state.queue);
-    }
+    updateUIFromState(state);
+    player.syncToState(state, false);
+    preloadNextQueueTrack(state.queue);
     if (state.chatHistory && Array.isArray(state.chatHistory)) {
       renderChatHistory(state.chatHistory);
     }
@@ -1408,23 +1385,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (now - lastControlAction < 250) return;
     lastControlAction = now;
 
-    // Handle Local Device Playback play/pause directly
-    if (isLocalPlaybackMode && currentLocalTrackIndex >= 0) {
-      const isPaused = player.audioElement.paused;
-      if (isPaused) {
-        player.play();
-        updatePlayPauseButton(true);
-        if (waveBarsContainer) waveBarsContainer.classList.add('playing');
-      } else {
-        player.pause();
-        updatePlayPauseButton(false);
-        if (waveBarsContainer) waveBarsContainer.classList.remove('playing');
-      }
-      return;
-    }
-
     if (!currentRoomState || !currentRoomState.currentTrack) {
-      alert('Please select a device song, search YouTube, or choose an MP3 track first!');
+      alert('Please search YouTube or select an MP3 track first!');
       return;
     }
 
@@ -1452,11 +1414,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const now = Date.now();
       if (now - lastControlAction < 300) return;
       lastControlAction = now;
-
-      if ((isLocalPlaybackMode || isSharingDeviceTrack || currentSharedServerTrack) && localDeviceTracks.length > 0) {
-        playPrevLocalTrack();
-        return;
-      }
       player.seek(0);
     });
   }
@@ -1466,11 +1423,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const now = Date.now();
     if (now - lastControlAction < 300) return;
     lastControlAction = now;
-
-    if ((isLocalPlaybackMode || isSharingDeviceTrack || currentSharedServerTrack) && localDeviceTracks.length > 0) {
-      playNextLocalTrack();
-      return;
-    }
     socket.emit('next-track', { clientServerTime: syncEngine.getServerTime() });
   });
 
@@ -1485,10 +1437,8 @@ document.addEventListener('DOMContentLoaded', () => {
       // Guard against seeking past the end (cap at duration - 1.5s to prevent accidental track exit)
       const targetPos = Math.min((parseFloat(timeSlider.value) / 100) * duration, Math.max(0, duration - 1.5));
       player.seek(targetPos);
-      if (!isLocalPlaybackMode) {
-        const nowServer = syncEngine.getServerTime();
-        socket.emit('seek', { position: targetPos, clientServerTime: nowServer });
-      }
+      const nowServer = syncEngine.getServerTime();
+      socket.emit('seek', { position: targetPos, clientServerTime: nowServer });
     }
     isSeeking = false;
   };
@@ -1593,7 +1543,6 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     if (playNow) {
-      isLocalPlaybackMode = false;
       socket.emit('change-track', { track, autoplay: true, clientServerTime: syncEngine.getServerTime() });
     } else {
       socket.emit('add-queue', track);
@@ -1698,7 +1647,6 @@ document.addEventListener('DOMContentLoaded', () => {
           thumbnail: item.thumbnail,
           url: `https://www.youtube.com/watch?v=${item.id}`
         };
-        isLocalPlaybackMode = false;
         socket.emit('change-track', { track, autoplay: true, clientServerTime: syncEngine.getServerTime() });
         showToast(`Playing "${item.title.substring(0, 24)}..."`);
       });
@@ -1788,7 +1736,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
       item.querySelector('.btn-play-mp3').addEventListener('click', () => {
         triggerUnlock();
-        isLocalPlaybackMode = false;
         socket.emit('change-track', { track, autoplay: true, clientServerTime: syncEngine.getServerTime() });
       });
 
@@ -1908,547 +1855,6 @@ document.addEventListener('DOMContentLoaded', () => {
       uploadFile(e.dataTransfer.files[0]);
     }
   });
-
-  // ========================================================
-  // 📱 11B. Local Device Songs & Room Sync Engine
-  // ========================================================
-  let localDeviceTracks = []; // Array of local audio objects
-  let currentLocalTrackIndex = -1;
-  let isLocalPlaybackMode = false;
-  let isDeviceShuffle = false;
-  let deviceRepeatMode = 'ALL'; // 'ALL' | 'ONE' | 'OFF'
-  let deviceSharingMode = 'ROOM'; // 'ROOM' (Stream to Room) | 'SOLO' (Device Only)
-  let currentSharedServerTrack = null;
-  let isSharingDeviceTrack = false;
-
-  const deviceFileInput = document.getElementById('device-file-input');
-  const deviceFolderInput = document.getElementById('device-folder-input');
-  const btnPickDeviceFiles = document.getElementById('btn-pick-device-files');
-  const btnPickDeviceFolder = document.getElementById('btn-pick-device-folder');
-  const btnPickDeviceEmpty = document.getElementById('btn-pick-device-empty');
-  const btnClearDeviceList = document.getElementById('btn-clear-device-list');
-  const deviceSearchInput = document.getElementById('device-search-input');
-  const deviceSongsListEl = document.getElementById('device-songs-list');
-  const deviceControlsBar = document.getElementById('device-controls-bar');
-  const deviceSongsCountEl = document.getElementById('device-songs-count');
-  const btnDeviceShuffle = document.getElementById('btn-device-shuffle');
-  const btnDeviceRepeat = document.getElementById('btn-device-repeat');
-  const btnSwitchToDeviceTab = document.getElementById('btn-switch-to-device-tab');
-  const btnDeviceModeRoom = document.getElementById('btn-device-mode-room');
-  const btnDeviceModeSolo = document.getElementById('btn-device-mode-solo');
-
-  if (btnDeviceModeRoom) {
-    btnDeviceModeRoom.addEventListener('click', () => {
-      deviceSharingMode = 'ROOM';
-      btnDeviceModeRoom.classList.add('active');
-      if (btnDeviceModeSolo) btnDeviceModeSolo.classList.remove('active');
-      showToast('📡 Room Sharing Mode ON: Selected songs will play on your device and share to room!');
-    });
-  }
-
-  if (btnDeviceModeSolo) {
-    btnDeviceModeSolo.addEventListener('click', () => {
-      deviceSharingMode = 'SOLO';
-      btnDeviceModeSolo.classList.add('active');
-      if (btnDeviceModeRoom) btnDeviceModeRoom.classList.remove('active');
-      showToast('🎧 Solo Mode: Selected songs will play only on your device locally.');
-    });
-  }
-
-  if (btnSwitchToDeviceTab) {
-    btnSwitchToDeviceTab.addEventListener('click', () => {
-      const devTab = document.querySelector('.tab-btn[data-tab="tab-device"]');
-      if (devTab) devTab.click();
-    });
-  }
-
-  if (btnPickDeviceFiles) {
-    btnPickDeviceFiles.addEventListener('click', () => {
-      if (deviceFileInput) deviceFileInput.click();
-    });
-  }
-
-  if (btnPickDeviceFolder) {
-    btnPickDeviceFolder.addEventListener('click', () => {
-      if (deviceFolderInput) deviceFolderInput.click();
-    });
-  }
-
-  if (btnPickDeviceEmpty) {
-    btnPickDeviceEmpty.addEventListener('click', () => {
-      if (deviceFileInput) deviceFileInput.click();
-    });
-  }
-
-  if (deviceFileInput) {
-    deviceFileInput.addEventListener('change', (e) => {
-      if (e.target.files && e.target.files.length > 0) {
-        handleDeviceFiles(e.target.files);
-        deviceFileInput.value = '';
-      }
-    });
-  }
-
-  if (deviceFolderInput) {
-    deviceFolderInput.addEventListener('change', (e) => {
-      if (e.target.files && e.target.files.length > 0) {
-        handleDeviceFiles(e.target.files);
-        deviceFolderInput.value = '';
-      }
-    });
-  }
-
-  if (btnClearDeviceList) {
-    btnClearDeviceList.addEventListener('click', () => {
-      if (localDeviceTracks.length === 0) return;
-      if (confirm('Clear all device songs from the list?')) {
-        localDeviceTracks.forEach(t => {
-          try { URL.revokeObjectURL(t.blobUrl); } catch (e) {}
-        });
-        localDeviceTracks = [];
-        currentLocalTrackIndex = -1;
-        isSharingDeviceTrack = false;
-        currentSharedServerTrack = null;
-        if (isLocalPlaybackMode) {
-          player.stop();
-          isLocalPlaybackMode = false;
-        }
-        renderDeviceSongsList();
-        showToast('Device songs list cleared');
-      }
-    });
-  }
-
-  if (deviceSearchInput) {
-    deviceSearchInput.addEventListener('input', () => {
-      renderDeviceSongsList();
-    });
-  }
-
-  if (btnDeviceShuffle) {
-    btnDeviceShuffle.addEventListener('click', () => {
-      isDeviceShuffle = !isDeviceShuffle;
-      btnDeviceShuffle.innerHTML = `🔀 Shuffle: <b>${isDeviceShuffle ? 'ON' : 'OFF'}</b>`;
-      btnDeviceShuffle.style.color = isDeviceShuffle ? 'var(--accent-cyan)' : 'var(--text-muted)';
-      showToast(isDeviceShuffle ? 'Shuffle turned ON' : 'Shuffle turned OFF');
-    });
-  }
-
-  if (btnDeviceRepeat) {
-    btnDeviceRepeat.addEventListener('click', () => {
-      if (deviceRepeatMode === 'ALL') {
-        deviceRepeatMode = 'ONE';
-      } else if (deviceRepeatMode === 'ONE') {
-        deviceRepeatMode = 'OFF';
-      } else {
-        deviceRepeatMode = 'ALL';
-      }
-      btnDeviceRepeat.innerHTML = `🔁 Repeat: <b>${deviceRepeatMode}</b>`;
-      btnDeviceRepeat.style.color = (deviceRepeatMode === 'OFF') ? 'var(--text-muted)' : 'var(--accent-cyan)';
-      showToast(`Repeat mode: ${deviceRepeatMode}`);
-    });
-  }
-
-  function handleDeviceFiles(fileList) {
-    if (!fileList || fileList.length === 0) return;
-    triggerUnlock();
-
-    let addedCount = 0;
-    const audioExts = ['.mp3', '.m4a', '.wav', '.ogg', '.aac', '.flac', '.opus', '.webm'];
-
-    for (let i = 0; i < fileList.length; i++) {
-      const file = fileList[i];
-      const name = file.name || 'Song';
-      const ext = name.substring(name.lastIndexOf('.')).toLowerCase();
-
-      if (!file.type.startsWith('audio/') && !audioExts.includes(ext) && !name.match(/\.(mp3|m4a|wav|ogg|aac|flac|opus|webm)$/i)) {
-        continue;
-      }
-
-      const exists = localDeviceTracks.some(t => t.name === file.name && t.size === file.size);
-      if (exists) continue;
-
-      let title = name.replace(/\.[^/.]+$/, "");
-      title = title.replace(/^[0-9\s.\-_]+/, '').trim() || name;
-
-      const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
-      const blobUrl = URL.createObjectURL(file);
-
-      localDeviceTracks.push({
-        id: 'local_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
-        title: title,
-        name: file.name,
-        file: file,
-        blobUrl: blobUrl,
-        size: file.size,
-        sizeStr: `${sizeMb} MB`,
-        type: 'local',
-        isLocal: true,
-        syncStatus: 'idle'
-      });
-      addedCount++;
-    }
-
-    renderDeviceSongsList();
-
-    if (addedCount > 0) {
-      showToast(`Added ${addedCount} song${addedCount > 1 ? 's' : ''} from device!`);
-      if (!isLocalPlaybackMode && !isSharingDeviceTrack && (!currentRoomState || currentRoomState.status !== 'playing')) {
-        const startIdx = localDeviceTracks.length - addedCount;
-        if (deviceSharingMode === 'ROOM') {
-          shareAndPlayDeviceSong(startIdx);
-        } else {
-          playLocalTrack(startIdx);
-        }
-      }
-    }
-  }
-
-  function renderDeviceSongsList() {
-    if (!deviceSongsListEl) return;
-
-    if (localDeviceTracks.length === 0) {
-      if (deviceControlsBar) deviceControlsBar.style.display = 'none';
-      if (btnClearDeviceList) btnClearDeviceList.style.display = 'none';
-      deviceSongsListEl.innerHTML = `
-        <div class="device-empty-state">
-          <div style="font-size:2.4rem; margin-bottom:8px;">📱</div>
-          <p style="font-weight:700; color:var(--text-primary); margin-bottom:4px; font-size:0.95rem;">No device songs selected</p>
-          <p style="font-size:0.8rem; color:var(--text-muted); max-width:320px; margin:0 auto 14px; line-height:1.4;">
-            Select any downloaded MP3, M4A, or audio files from your Downloads or Music storage. Plays instantly on your phone and shares to everyone in the room!
-          </p>
-          <button class="btn-primary" id="btn-pick-device-empty" type="button" style="margin:0 auto; padding:8px 22px; font-size:0.85rem;">
-            📂 Choose Songs from Device
-          </button>
-        </div>
-      `;
-      const btnEmpty = document.getElementById('btn-pick-device-empty');
-      if (btnEmpty && deviceFileInput) {
-        btnEmpty.addEventListener('click', () => deviceFileInput.click());
-      }
-      return;
-    }
-
-    if (deviceControlsBar) deviceControlsBar.style.display = 'flex';
-    if (btnClearDeviceList) btnClearDeviceList.style.display = 'block';
-
-    const filter = (deviceSearchInput ? deviceSearchInput.value : '').trim().toLowerCase();
-    const count = localDeviceTracks.length;
-    if (deviceSongsCountEl) {
-      deviceSongsCountEl.textContent = `${count} downloaded song${count > 1 ? 's' : ''} on device`;
-    }
-
-    deviceSongsListEl.innerHTML = '';
-    localDeviceTracks.forEach((track, originalIndex) => {
-      if (filter && !track.title.toLowerCase().includes(filter) && !track.name.toLowerCase().includes(filter)) {
-        return;
-      }
-
-      const isCurrent = (currentLocalTrackIndex === originalIndex);
-      const isSharedRoomActive = (isCurrent && (isSharingDeviceTrack || currentSharedServerTrack) && !isLocalPlaybackMode);
-      const isSoloActive = (isCurrent && isLocalPlaybackMode);
-
-      let syncBadge = '';
-      if (track.syncStatus === 'uploading') {
-        syncBadge = `<span class="badge" style="background:rgba(255,209,102,0.2); color:#ffd166; font-size:0.68rem; padding:1px 6px; border-radius:6px;">⏳ Syncing...</span>`;
-      } else if (track.syncStatus === 'shared') {
-        syncBadge = `<span class="badge" style="background:rgba(0,242,254,0.2); color:#00f2fe; font-size:0.68rem; padding:1px 6px; border-radius:6px;">📡 Room Synced</span>`;
-      } else if (track.syncStatus === 'failed') {
-        syncBadge = `<span class="badge" style="background:rgba(255,77,77,0.2); color:#ff4d4d; font-size:0.68rem; padding:1px 6px; border-radius:6px;">⚠️ Solo Only</span>`;
-      }
-
-      const item = document.createElement('div');
-      item.className = `queue-item ${isSharedRoomActive ? 'device-shared-active' : (isSoloActive ? 'device-song-active' : '')}`;
-
-      item.innerHTML = `
-        <div class="queue-item-info">
-          <span style="font-size:1.2rem;">${isSharedRoomActive ? '📡' : (isSoloActive ? '🎧' : '🎵')}</span>
-          <div style="display:flex; flex-direction:column; min-width:0;">
-            <div class="queue-item-title">${escapeHtml(track.title)}</div>
-            <div style="display:flex; align-items:center; gap:6px; margin-top:2px;">
-              <span style="font-size:0.72rem; color:var(--text-muted);">${track.sizeStr}</span>
-              ${syncBadge}
-            </div>
-          </div>
-        </div>
-        <div class="queue-item-actions" style="display:flex; gap:6px; align-items:center;">
-          <button class="btn-mini btn-share-room" style="${isSharedRoomActive ? 'background:linear-gradient(135deg,#00f2fe,#4facfe); color:#000; font-weight:700;' : 'background:rgba(0,242,254,0.15); color:#00f2fe; border:1px solid rgba(0,242,254,0.4);'}" title="Play on device & share to room">
-            🚀 ${isSharedRoomActive ? 'Playing in Room' : 'Share in Room'}
-          </button>
-          <button class="btn-mini btn-play-solo" style="${isSoloActive ? 'background:#10b981; color:#000; font-weight:700;' : 'background:rgba(255,255,255,0.06); color:var(--text-primary);'}" title="Play only on this device">
-            🎧 Solo
-          </button>
-          <button class="btn-mini btn-remove-local" style="color:#ff6b6b; border:1px solid rgba(255,100,100,0.3); background:rgba(255,50,50,0.08); padding:3px 6px;" title="Remove from list">
-            ✕
-          </button>
-        </div>
-      `;
-
-      item.querySelector('.btn-share-room').addEventListener('click', (e) => {
-        e.stopPropagation();
-        shareAndPlayDeviceSong(originalIndex);
-      });
-
-      item.querySelector('.btn-play-solo').addEventListener('click', (e) => {
-        e.stopPropagation();
-        playLocalTrack(originalIndex);
-      });
-
-      item.querySelector('.btn-remove-local').addEventListener('click', (e) => {
-        e.stopPropagation();
-        removeLocalTrack(originalIndex);
-      });
-
-      item.addEventListener('click', () => {
-        if (deviceSharingMode === 'ROOM') {
-          shareAndPlayDeviceSong(originalIndex);
-        } else {
-          playLocalTrack(originalIndex);
-        }
-      });
-
-      deviceSongsListEl.appendChild(item);
-    });
-  }
-
-  // Play immediately on host device & stream to room in background
-  async function shareAndPlayDeviceSong(index) {
-    if (index < 0 || index >= localDeviceTracks.length) return;
-    triggerUnlock();
-
-    currentLocalTrackIndex = index;
-    isLocalPlaybackMode = false;
-    isSharingDeviceTrack = true;
-    const track = localDeviceTracks[index];
-
-    // 1. Play instantly on host phone via blobUrl (0ms latency, built-in player experience!)
-    const localStandardTrack = {
-      id: track.id,
-      title: track.title,
-      type: 'local',
-      url: track.blobUrl,
-      size: track.size,
-      isLocal: true,
-      thumbnail: null
-    };
-
-    player.loadTrack(localStandardTrack, true, 0);
-    updateSharedDevicePlayerUI(track, true, 'syncing');
-    track.syncStatus = 'uploading';
-    renderDeviceSongsList();
-    showToast(`▶ Playing on device & sharing to room: ${track.title}...`);
-
-    // 2. Upload file in background so all connected devices can sync and stream
-    try {
-      const formData = new FormData();
-      formData.append('audio', track.file, track.name);
-
-      const resp = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData
-      });
-      const data = await resp.json();
-
-      if (data && data.success && data.track) {
-        track.syncStatus = 'shared';
-        track.serverTrack = data.track;
-        currentSharedServerTrack = data.track;
-
-        // Current playback position on host
-        const currentPos = player.getCurrentTime();
-
-        // Broadcast to everyone in the room!
-        socket.emit('change-track', {
-          track: data.track,
-          autoplay: true,
-          position: currentPos
-        });
-
-        updateSharedDevicePlayerUI(track, true, 'shared');
-        renderDeviceSongsList();
-        showToast(`🎉 Shared! Room is now playing in sync 🎧`);
-      } else {
-        track.syncStatus = 'failed';
-        renderDeviceSongsList();
-        showToast('⚠️ Could not share to room. Playing locally.');
-      }
-    } catch (err) {
-      console.error('Error sharing device song:', err);
-      track.syncStatus = 'failed';
-      renderDeviceSongsList();
-      showToast('⚠️ Network issue sharing song. Playing locally.');
-    }
-  }
-
-  function updateSharedDevicePlayerUI(track, isPlaying, status) {
-    if (trackTitleEl) trackTitleEl.textContent = track.title || 'Device Track';
-    if (trackSubEl) {
-      const idxText = localDeviceTracks.length > 0 ? `(${currentLocalTrackIndex + 1}/${localDeviceTracks.length})` : '';
-      if (status === 'syncing') {
-        trackSubEl.innerHTML = `<span id="track-source" class="badge-source device">📱 DEVICE</span> <span style="font-size:0.75rem; color:#ffd166; font-weight:600; margin-left:6px;">⏳ Syncing to Room... ${idxText}</span>`;
-      } else if (status === 'shared') {
-        trackSubEl.innerHTML = `<span id="track-source" class="badge-source device" style="background:rgba(0,242,254,0.2); color:#00f2fe; border:1px solid rgba(0,242,254,0.4);">📡 ROOM SYNC</span> <span style="font-size:0.75rem; color:#00f2fe; font-weight:600; margin-left:6px;">Playing in Room ${idxText}</span>`;
-      } else {
-        trackSubEl.innerHTML = `<span id="track-source" class="badge-source local">📱 DEVICE</span> <span style="font-size:0.75rem; color:#10b981; font-weight:600; margin-left:6px;">Solo Offline ${idxText}</span>`;
-      }
-    }
-    if (coverImg) coverImg.style.display = 'none';
-    if (coverPlaceholder) {
-      coverPlaceholder.style.display = 'block';
-      coverPlaceholder.textContent = '📱';
-    }
-    const ytContainer = document.getElementById('youtube-player-container');
-    if (ytContainer) ytContainer.classList.remove('active');
-
-    updatePlayPauseButton(isPlaying);
-    if (waveBarsContainer) {
-      if (isPlaying) waveBarsContainer.classList.add('playing');
-      else waveBarsContainer.classList.remove('playing');
-    }
-  }
-
-  function playLocalTrack(index) {
-    if (index < 0 || index >= localDeviceTracks.length) return;
-    triggerUnlock();
-
-    currentLocalTrackIndex = index;
-    isLocalPlaybackMode = true;
-    isSharingDeviceTrack = false;
-    currentSharedServerTrack = null;
-    const track = localDeviceTracks[index];
-
-    const standardTrack = {
-      id: track.id,
-      title: track.title,
-      type: 'local',
-      url: track.blobUrl,
-      size: track.size,
-      isLocal: true,
-      thumbnail: null
-    };
-
-    player.loadTrack(standardTrack, true, 0);
-    updateLocalPlayerUI(standardTrack, true);
-    renderDeviceSongsList();
-    showToast(`▶ Playing Solo: ${track.title}`);
-  }
-
-  function updateLocalPlayerUI(track, isPlaying) {
-    if (trackTitleEl) trackTitleEl.textContent = track.title || 'Local Track';
-    if (trackSubEl) {
-      const idxText = localDeviceTracks.length > 0 ? `(${currentLocalTrackIndex + 1}/${localDeviceTracks.length})` : '';
-      trackSubEl.innerHTML = `<span id="track-source" class="badge-source local">📱 DEVICE</span> <span style="font-size:0.75rem; color:#10b981; font-weight:600; margin-left:6px;">Local Offline ${idxText}</span>`;
-    }
-    if (coverImg) coverImg.style.display = 'none';
-    if (coverPlaceholder) {
-      coverPlaceholder.style.display = 'block';
-      coverPlaceholder.textContent = '📱';
-    }
-    const ytContainer = document.getElementById('youtube-player-container');
-    if (ytContainer) ytContainer.classList.remove('active');
-
-    updatePlayPauseButton(isPlaying);
-    if (waveBarsContainer) {
-      if (isPlaying) waveBarsContainer.classList.add('playing');
-      else waveBarsContainer.classList.remove('playing');
-    }
-  }
-
-  function playNextLocalTrack() {
-    if (localDeviceTracks.length === 0) return;
-
-    if (deviceRepeatMode === 'ONE') {
-      player.seek(0);
-      player.play(0);
-      return;
-    }
-
-    if (isDeviceShuffle && localDeviceTracks.length > 1) {
-      let randIndex;
-      do {
-        randIndex = Math.floor(Math.random() * localDeviceTracks.length);
-      } while (randIndex === currentLocalTrackIndex && localDeviceTracks.length > 1);
-      if (deviceSharingMode === 'ROOM' && !isLocalPlaybackMode) {
-        shareAndPlayDeviceSong(randIndex);
-      } else {
-        playLocalTrack(randIndex);
-      }
-      return;
-    }
-
-    let nextIndex = currentLocalTrackIndex + 1;
-    if (nextIndex >= localDeviceTracks.length) {
-      if (deviceRepeatMode === 'ALL') {
-        nextIndex = 0;
-      } else {
-        player.pause();
-        if (isLocalPlaybackMode) {
-          updateLocalPlayerUI(localDeviceTracks[currentLocalTrackIndex], false);
-        }
-        return;
-      }
-    }
-    if (deviceSharingMode === 'ROOM' && !isLocalPlaybackMode) {
-      shareAndPlayDeviceSong(nextIndex);
-    } else {
-      playLocalTrack(nextIndex);
-    }
-  }
-
-  function playPrevLocalTrack() {
-    if (localDeviceTracks.length === 0) return;
-
-    const curTime = player.getCurrentTime();
-    if (curTime > 3) {
-      player.seek(0);
-      return;
-    }
-
-    let prevIndex = currentLocalTrackIndex - 1;
-    if (prevIndex < 0) {
-      prevIndex = localDeviceTracks.length - 1;
-    }
-    if (deviceSharingMode === 'ROOM' && !isLocalPlaybackMode) {
-      shareAndPlayDeviceSong(prevIndex);
-    } else {
-      playLocalTrack(prevIndex);
-    }
-  }
-
-  function handleLocalTrackEnded() {
-    if ((isLocalPlaybackMode || isSharingDeviceTrack || currentSharedServerTrack) && localDeviceTracks.length > 0) {
-      playNextLocalTrack();
-      return true;
-    }
-    return false;
-  }
-
-  function removeLocalTrack(index) {
-    if (index < 0 || index >= localDeviceTracks.length) return;
-    const removed = localDeviceTracks.splice(index, 1)[0];
-    try { URL.revokeObjectURL(removed.blobUrl); } catch (e) {}
-
-    if (currentLocalTrackIndex === index) {
-      if (localDeviceTracks.length > 0) {
-        const nextIdx = index < localDeviceTracks.length ? index : 0;
-        if (deviceSharingMode === 'ROOM' && !isLocalPlaybackMode) {
-          shareAndPlayDeviceSong(nextIdx);
-        } else {
-          playLocalTrack(nextIdx);
-        }
-      } else {
-        player.stop();
-        isLocalPlaybackMode = false;
-        isSharingDeviceTrack = false;
-        currentSharedServerTrack = null;
-        currentLocalTrackIndex = -1;
-        updateUIFromState(currentRoomState || {});
-      }
-    } else if (currentLocalTrackIndex > index) {
-      currentLocalTrackIndex--;
-    }
-    renderDeviceSongsList();
-  }
 
   // 12. Tabs (YouTube / MP3 / Queue)
   const tabs = document.querySelectorAll('.tab-btn');

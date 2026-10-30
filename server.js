@@ -70,10 +70,10 @@ app.use('/uploads', express.static(UPLOADS_DIR, {
 // ========================================================
 app.get('/api/app-version', (req, res) => {
   res.json({
-    versionCode: 5,
-    versionName: "1.4.0",
+    versionCode: 6,
+    versionName: "1.5.0",
     apkUrl: "https://music-together-tr1h.onrender.com/download/latest.apk",
-    releaseNotes: "• Play downloaded songs directly from device storage (Zero Upload!)\n• Offline media player support with Shuffle & Repeat\n• Previous / Next track controls\n• Created by Sudipta ❤️",
+    releaseNotes: "• SyncTunes v1.5.0 (All Rights Reserved)\n• High-precision real-time music sync\n• Created with ❤️ by Sudipta",
     forceUpdate: false
   });
 });
@@ -195,8 +195,8 @@ let ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '246890';
 const ADMIN_SECURITY_ANSWER = 'I am a good boy';
 
 // Global Website Maintenance / Staging Flag
-// Default is FALSE (Website is LIVE for everyone). Admin can toggle from Admin Panel.
-let isMaintenanceMode = process.env.AUTO_MAINTENANCE === 'true';
+// Permanently FALSE by default (Website is 100% LIVE for everyone, no maintenance popup).
+let isMaintenanceMode = false;
 
 // Maintenance status API endpoint
 app.get('/api/maintenance', (req, res) => {
@@ -1161,4 +1161,20 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log(`  Friends Mobile:     http://${ip.address}:${PORT}`);
   });
   console.log(`======================================================\n`);
+
+  // 15. Keep-Alive Self-Ping: Keeps Render / Cloud Server awake 24/7 (Never goes to sleep)
+  const selfUrl = process.env.RENDER_EXTERNAL_URL || 'https://music-together-tr1h.onrender.com';
+  if (selfUrl && !selfUrl.includes('localhost')) {
+    const pingProtocol = selfUrl.startsWith('https') ? https : http;
+    setInterval(() => {
+      try {
+        pingProtocol.get(`${selfUrl}/api/maintenance`, (res) => {
+          // Keep-alive ping OK
+        }).on('error', () => {
+          // Ignore transient ping error
+        });
+      } catch (e) {}
+    }, 8 * 60 * 1000); // Ping every 8 minutes
+    console.log(`[Keep-Alive] 24/7 Auto-Ping active for: ${selfUrl}`);
+  }
 });
