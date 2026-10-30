@@ -72,7 +72,7 @@ const GITHUB_LATEST_APK_URL = "https://github.com/Maitysudipta670/Music-Together
 
 app.get('/api/app-version', (req, res) => {
   res.json({
-    versionCode: 9,
+    versionCode: 10,
     versionName: "1.7.1",
     apkUrl: GITHUB_LATEST_APK_URL,
     releaseNotes: "• Bugs Fixed",
