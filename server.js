@@ -68,14 +68,14 @@ app.use('/uploads', express.static(UPLOADS_DIR, {
 // ========================================================
 // 📱 In-App Auto-Update Endpoint for SyncTunes Android App
 // ========================================================
-const GITHUB_LATEST_APK_URL = "https://github.com/Maitysudipta670/Music-Together/releases/download/v1.7.0/SyncTunes-v1.7.0.apk";
+const GITHUB_LATEST_APK_URL = "https://github.com/Maitysudipta670/Music-Together/releases/download/v1.7.1/SyncTunes-v1.7.1.apk";
 
 app.get('/api/app-version', (req, res) => {
   res.json({
-    versionCode: 8,
-    versionName: "1.7.0",
+    versionCode: 9,
+    versionName: "1.7.1",
     apkUrl: GITHUB_LATEST_APK_URL,
-    releaseNotes: "•Bugs Fixed",
+    releaseNotes: "• Background Music Playback (Screen lock & minimized)\n• One-tap Check for Updates in Header\n• Instant update notifications\n• Created with ❤️ by Sudipta • All Rights Reserved",
     forceUpdate: false
   });
 });

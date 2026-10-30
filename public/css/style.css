@@ -1649,7 +1649,7 @@ header {
    Admin Management Control Strip (Only visible to Admin)
    ======================================================== */
 .admin-control-strip {
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: space-between;
   gap: 12px;

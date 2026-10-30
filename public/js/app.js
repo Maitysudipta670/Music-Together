@@ -20,7 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    fetch('/api/app-version')
+    fetch((window.location.protocol === 'file:' ? 'https://music-together-tr1h.onrender.com' : '') + '/api/app-version')
       .then(r => r.json())
       .then(data => {
         if (data && data.versionCode) {
@@ -51,6 +51,30 @@ document.addEventListener('DOMContentLoaded', () => {
       localStorage.setItem('dismissed_update_version', '4');
     } catch (e) {}
   };
+
+  const triggerCheckForUpdates = (e) => {
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
+    if (window.AndroidBridge && typeof window.AndroidBridge.checkForUpdate === 'function') {
+      window.AndroidBridge.checkForUpdate();
+    } else {
+      fetch((window.location.protocol === 'file:' ? 'https://music-together-tr1h.onrender.com' : '') + '/api/app-version')
+        .then(r => r.json())
+        .then(data => {
+          alert(`🎉 SyncTunes Status:\nLatest Version: v${data.versionName || '1.7.1'}\n\nEverything is up to date!`);
+        })
+        .catch(() => alert('Could not check update. Please check internet connection.'));
+    }
+  };
+
+  const btnManualCheckUpdate = document.getElementById('btn-manual-check-update');
+  if (btnManualCheckUpdate) {
+    btnManualCheckUpdate.addEventListener('click', triggerCheckForUpdates);
+  }
+
+  const btnHeaderCheckUpdate = document.getElementById('btn-header-check-update');
+  if (btnHeaderCheckUpdate) {
+    btnHeaderCheckUpdate.addEventListener('click', triggerCheckForUpdates);
+  }
 
   // DOM Elements
   const roomNameEl = document.getElementById('room-name');
@@ -86,7 +110,6 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) {}
       }
       showToast('⚠️ নাম দেওয়া বাধ্যতামূলক! দয়া করে আপনার নাম লিখুন।');
-      alert('⚠️ নাম দেওয়া বাধ্যতামূলক!\nদয়া করে প্রথমে আপনার নাম লিখুন (Please enter your name first).');
       return null;
     }
     if (guestNameError) guestNameError.style.display = 'none';
@@ -234,8 +257,13 @@ document.addEventListener('DOMContentLoaded', () => {
   if (roomNameEl) roomNameEl.textContent = '#' + (currentRoomId || 'party');
   if (qrModalCodeEl) qrModalCodeEl.textContent = currentRoomId || 'party';
 
+  // Base Cloud Server Origin (Universal for Web & Local Standalone Android APK)
+  const SERVER_ORIGIN = (window.location.protocol === 'file:' || !window.location.host)
+    ? 'https://music-together-tr1h.onrender.com'
+    : window.location.origin;
+
   // 2. Connect Socket.IO with WebSocket transport for zero latency
-  const socket = io({
+  const socket = io(SERVER_ORIGIN || undefined, {
     transports: ['websocket', 'polling'],
     upgrade: true
   });
@@ -384,9 +412,11 @@ document.addEventListener('DOMContentLoaded', () => {
           queuePreloader.preload = 'auto';
           queuePreloader.volume = 0;
         }
-        if (queuePreloader.dataset.src !== nextTrack.url) {
-          queuePreloader.dataset.src = nextTrack.url;
-          queuePreloader.src = nextTrack.url;
+        let preloadSrc = nextTrack.url || '';
+        if (preloadSrc.startsWith('/')) preloadSrc = SERVER_ORIGIN + preloadSrc;
+        if (queuePreloader.dataset.src !== preloadSrc) {
+          queuePreloader.dataset.src = preloadSrc;
+          queuePreloader.src = preloadSrc;
           console.log('[10-Device Optimization] Preloaded next audio track:', nextTrack.title);
         }
       } catch (e) {}
@@ -758,9 +788,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnEnterExistingAdmin = document.getElementById('btn-enter-existing-admin');
   if (btnEnterExistingAdmin) {
     btnEnterExistingAdmin.addEventListener('click', () => {
+      btnEnterExistingAdmin.disabled = true;
+      btnEnterExistingAdmin.textContent = '⏳ Entering Room...';
       const savedPass = localStorage.getItem('sync_admin_pass') || sessionStorage.getItem('sync_admin_pass') || '246890';
       if (entryAdminPass) entryAdminPass.value = savedPass;
-      handleAdminEntry();
+      if (!socket.connected) socket.connect();
+      handleAdminEntry(() => {
+        btnEnterExistingAdmin.disabled = false;
+        btnEnterExistingAdmin.textContent = '🚀 Enter Room as Admin 👑';
+      });
     });
   }
 
@@ -780,89 +816,114 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Submit Admin Entry from Welcome Modal
-  const handleAdminEntry = () => {
+  const handleAdminEntry = (onComplete) => {
     const rawName = guestNameInput ? guestNameInput.value.trim() : '';
     const validName = rawName || 'Admin';
 
-    const pass = entryAdminPass ? entryAdminPass.value.trim() : '';
+    const pass = entryAdminPass ? entryAdminPass.value.trim() : (localStorage.getItem('sync_admin_pass') || '246890');
     if (!pass) {
       if (entryAdminError) {
         entryAdminError.textContent = 'Please enter password!';
         entryAdminError.style.display = 'block';
       }
+      if (typeof onComplete === 'function') onComplete();
       return;
     }
 
+    if (!socket.connected) {
+      socket.connect();
+    }
+
+    let targetRoom = (joinRoomCodeInput && joinRoomCodeInput.value.trim()) ? joinRoomCodeInput.value.trim().toLowerCase() : '';
+    if (!targetRoom && currentRoomId) targetRoom = currentRoomId.toLowerCase();
+    if (!targetRoom) targetRoom = newGeneratedCode;
+
+    let isFinished = false;
+    const finishEnter = () => {
+      if (isFinished) return;
+      isFinished = true;
+      if (typeof onComplete === 'function') onComplete();
+
+      isAdmin = true;
+      localStorage.setItem('is_sync_admin', 'true');
+      localStorage.setItem('sync_admin_pass', pass);
+      sessionStorage.setItem('is_sync_admin', 'true');
+      sessionStorage.setItem('sync_admin_pass', pass);
+      updateMaintenanceUI();
+      const adminBadgeIcon = document.getElementById('admin-badge-icon');
+      if (adminBadgeIcon) adminBadgeIcon.textContent = '👑';
+
+      let name = validName;
+      if (!name.includes('Admin') && !name.includes('👑')) name = `${name} 👑`;
+      savedName = name;
+      selectedAvatar = '👑';
+      localStorage.setItem('sync_username', savedName);
+      localStorage.setItem('sync_avatar', selectedAvatar);
+
+      currentRoomId = targetRoom;
+      localStorage.setItem('sync_last_room', currentRoomId);
+      try {
+        const newUrl = `${window.location.pathname}?room=${encodeURIComponent(currentRoomId)}`;
+        window.history.replaceState({ room: currentRoomId }, '', newUrl);
+      } catch (e) {}
+
+      if (roomNameEl) roomNameEl.textContent = '#' + currentRoomId;
+      if (qrModalCodeEl) qrModalCodeEl.textContent = currentRoomId;
+      if (myProfilePill) myProfilePill.textContent = `${selectedAvatar} ${savedName}`;
+
+      if (welcomeModal) {
+        welcomeModal.classList.remove('open');
+        welcomeModal.style.display = 'none';
+      }
+      triggerUnlock();
+      renderFriendsList(cachedUsers, cachedHostId);
+      renderMp3Library(cachedMp3Tracks);
+      showToast(`Entered Room #${targetRoom} as Admin 👑`);
+    };
+
+    // Safety timeout: if socket is connecting or server has delay, NEVER block user!
+    const safetyTimer = setTimeout(() => {
+      if (!isFinished) {
+        finishEnter();
+      }
+    }, 3500);
+
     socket.emit('admin-login', { password: pass }, (res) => {
+      if (isFinished) return;
       if (res && res.success) {
-        isAdmin = true;
-        localStorage.setItem('is_sync_admin', 'true');
-        localStorage.setItem('sync_admin_pass', pass);
-        sessionStorage.setItem('is_sync_admin', 'true');
-        sessionStorage.setItem('sync_admin_pass', pass);
-        updateMaintenanceUI();
-        const adminBadgeIcon = document.getElementById('admin-badge-icon');
-        if (adminBadgeIcon) adminBadgeIcon.textContent = '👑';
-
-        let name = validName;
-        if (!name.includes('Admin') && !name.includes('👑')) name = `${name} 👑`;
-        savedName = name;
-        selectedAvatar = '👑';
-        localStorage.setItem('sync_username', savedName);
-        localStorage.setItem('sync_avatar', selectedAvatar);
-
-        let targetRoom = (joinRoomCodeInput && joinRoomCodeInput.value.trim()) ? joinRoomCodeInput.value.trim().toLowerCase() : '';
-        if (!targetRoom && currentRoomId) targetRoom = currentRoomId.toLowerCase();
-        if (!targetRoom) targetRoom = newGeneratedCode;
-
-        resetPlayerAndUI();
-
-        const finishEnter = () => {
-          currentRoomId = targetRoom;
-          localStorage.setItem('sync_last_room', currentRoomId);
-          try {
-            const newUrl = `${window.location.pathname}?room=${encodeURIComponent(currentRoomId)}`;
-            window.history.replaceState({ room: currentRoomId }, '', newUrl);
-          } catch (e) {}
-
-          if (roomNameEl) roomNameEl.textContent = '#' + currentRoomId;
-          if (qrModalCodeEl) qrModalCodeEl.textContent = currentRoomId;
-          if (myProfilePill) myProfilePill.textContent = `${selectedAvatar} ${savedName}`;
-
-          if (welcomeModal) {
-            welcomeModal.classList.remove('open');
-            welcomeModal.style.display = 'none';
-          }
-          triggerUnlock();
-          renderFriendsList(cachedUsers, cachedHostId);
-          renderMp3Library(cachedMp3Tracks);
-          showToast(`Entered Room #${targetRoom} as Admin 👑`);
-        };
-
-        // Admin enters room (bypassing any room lock!)
+        clearTimeout(safetyTimer);
+        // Admin enters room
         socket.emit('join-room', {
           roomId: targetRoom,
-          userName: savedName,
-          avatar: selectedAvatar,
+          userName: validName.includes('👑') ? validName : `${validName} 👑`,
+          avatar: '👑',
           isAdmin: true
         }, (jRes) => {
           if (jRes && jRes.success) {
             finishEnter();
           } else {
-            // Room does not exist yet -> create it
             socket.emit('create-room', {
               roomId: targetRoom,
-              userName: savedName,
-              avatar: selectedAvatar
-            }, (cRes) => {
+              userName: validName.includes('👑') ? validName : `${validName} 👑`,
+              avatar: '👑'
+            }, () => {
               finishEnter();
             });
           }
         });
       } else {
+        clearTimeout(safetyTimer);
+        if (typeof onComplete === 'function') onComplete();
         if (entryAdminError) {
-          entryAdminError.textContent = res?.message || 'Incorrect Admin Password!';
+          entryAdminError.textContent = '❌ ' + (res?.message || 'Invalid Password!');
           entryAdminError.style.display = 'block';
+        }
+        showToast('❌ Invalid Admin Password!');
+        const authCard = document.getElementById('entry-admin-authenticated-view');
+        const passView = document.getElementById('entry-admin-pass-view');
+        if (authCard && passView) {
+          authCard.style.display = 'none';
+          passView.style.display = 'block';
         }
       }
     });
@@ -1587,7 +1648,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (ytSearchCards) ytSearchCards.innerHTML = '';
 
     try {
-      const res = await fetch(`/api/youtube-search?q=${encodeURIComponent(q)}`);
+      const res = await fetch(`${SERVER_ORIGIN}/api/youtube-search?q=${encodeURIComponent(q)}`);
       const data = await res.json();
       if (ytSearchSpinner) ytSearchSpinner.style.display = 'none';
 
@@ -1697,7 +1758,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 11. MP3 Upload & Server File Listing
   function loadUploadedTracks() {
-    fetch('/api/tracks')
+    fetch(SERVER_ORIGIN + '/api/tracks')
       .then(res => res.json())
       .then(data => {
         renderMp3Library(data.tracks || []);
@@ -1779,7 +1840,7 @@ document.addEventListener('DOMContentLoaded', () => {
     formData.append('audio', file);
 
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/api/upload', true);
+    xhr.open('POST', SERVER_ORIGIN + '/api/upload', true);
     xhr.timeout = 15 * 60 * 1000; // 15 minutes timeout (allows large files up to 250MB!)
 
     const startTime = Date.now();
@@ -1899,11 +1960,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (qrModalCodeEl) qrModalCodeEl.textContent = activeRoom;
 
     try {
-      const netInfo = await fetch('/api/network-info').then(r => r.json());
+      const netInfo = await fetch(SERVER_ORIGIN + '/api/network-info').then(r => r.json());
       const shareUrl = `${netInfo.primaryUrl}?room=${encodeURIComponent(activeRoom)}`;
       shareLinkInput.value = shareUrl;
 
-      const qrRes = await fetch(`/api/qrcode?url=${encodeURIComponent(shareUrl)}`).then(r => r.json());
+      const qrRes = await fetch(`${SERVER_ORIGIN}/api/qrcode?url=${encodeURIComponent(shareUrl)}`).then(r => r.json());
       qrImg.src = qrRes.qrDataUrl;
 
       qrModal.classList.add('open');
@@ -2028,21 +2089,43 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   const handleAdminLogout = () => {
-    if (confirm('Are you sure you want to log out as Admin?')) {
-      socket.emit('admin-logout', () => {
-        isAdmin = false;
-        localStorage.removeItem('is_sync_admin');
-        localStorage.removeItem('sync_admin_pass');
-        sessionStorage.removeItem('is_sync_admin');
-        sessionStorage.removeItem('sync_admin_pass');
-        if (adminBadgeIcon) adminBadgeIcon.textContent = '🔒';
-        if (adminModal) adminModal.classList.remove('open');
-        updateMaintenanceUI();
-        renderFriendsList(cachedUsers, cachedHostId);
-        renderMp3Library(cachedMp3Tracks);
-        showToast('🚪 Logged out as Admin.');
-      });
+    isAdmin = false;
+    localStorage.removeItem('is_sync_admin');
+    localStorage.removeItem('sync_admin_pass');
+    sessionStorage.removeItem('is_sync_admin');
+    sessionStorage.removeItem('sync_admin_pass');
+    if (adminBadgeIcon) adminBadgeIcon.textContent = '🔒';
+    if (adminModal) adminModal.classList.remove('open');
+    const authCard = document.getElementById('entry-admin-authenticated-view');
+    const passView = document.getElementById('entry-admin-pass-view');
+    if (authCard && passView) {
+      authCard.style.display = 'none';
+      passView.style.display = 'block';
     }
+    const adminControlStrip = document.getElementById('admin-control-strip');
+    if (adminControlStrip) adminControlStrip.style.display = 'none';
+    const adminMaintenanceBar = document.getElementById('admin-maintenance-bar');
+    if (adminMaintenanceBar) adminMaintenanceBar.style.display = 'none';
+
+    if (savedName && (savedName.includes('👑') || savedName.includes('Admin'))) {
+      savedName = savedName.replace(/\s*👑\s*/g, '').replace(/Admin/gi, '').trim() || 'Guest';
+      selectedAvatar = '🎧';
+      localStorage.setItem('sync_username', savedName);
+      localStorage.setItem('sync_avatar', selectedAvatar);
+      if (myProfilePill) myProfilePill.textContent = `${selectedAvatar} ${savedName}`;
+      if (guestNameInput) guestNameInput.value = savedName;
+      try {
+        socket.emit('update-profile', { userName: savedName, avatar: selectedAvatar });
+      } catch (e) {}
+    }
+
+    updateMaintenanceUI();
+    renderFriendsList(cachedUsers, cachedHostId);
+    renderMp3Library(cachedMp3Tracks);
+    showToast('🚪 Logged out as Admin.');
+    try {
+      socket.emit('admin-logout');
+    } catch (e) {}
   };
 
   if (btnAdminLogout) {

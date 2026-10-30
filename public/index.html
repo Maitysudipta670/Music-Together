@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
   
   <!-- Google Search Console Site Verification -->
   <meta name="google-site-verification" content="z8y7gh3ed3AWKi_lHBEXojpb9wIPeWzNHKJMbSxaTxA" />
@@ -31,9 +32,8 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎵</text></svg>">
   <!-- YouTube IFrame Player API -->
   <script src="https://www.youtube.com/iframe_api"></script>
-  <!-- Socket.IO Client with Local Fallback -->
-  <script src="/socket.io/socket.io.js"></script>
-  <script>if (typeof io === 'undefined') { document.write('<script src="js/socket.io.min.js"><\/script>'); }</script>
+  <!-- Socket.IO Client (Bundled for instant zero-latency startup) -->
+  <script src="js/socket.io.min.js"></script>
 </head>
 <body>
   <!-- Floating In-App & Web Update Notification Banner -->
@@ -98,6 +98,9 @@
         </button>
         <button id="btn-share" class="btn-icon" title="Invite Friends">
           <span>📲</span> Share / QR
+        </button>
+        <button id="btn-header-check-update" class="btn-icon btn-update-pill" title="Check for App Updates" style="color: #00f2fe; border: 1px solid rgba(0, 242, 254, 0.4); background: rgba(0, 242, 254, 0.12); font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+          <span>🚀</span> <span style="font-size: 0.8rem;">Update</span>
         </button>
         <a id="btn-download-app" class="btn-icon" href="/download/latest.apk" title="Download Android App (APK)" style="text-decoration:none; display:inline-flex; align-items:center;">
           <span>📱</span> App
@@ -347,12 +350,14 @@
     <footer style="margin: 28px 0 20px; text-align: center; padding: 14px 10px; border-top: 1px solid rgba(255,255,255,0.08);">
       <div style="font-size: 0.84rem; color: #94a3b8; font-weight: 500; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;">
         <div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
-          <span>🎵 SyncTunes v1.5.0</span>
+          <span>🎵 SyncTunes v1.7.1</span>
           <span>•</span>
           <span>Created with ❤️ by <strong style="color: #00f2fe; font-weight: 700; letter-spacing: 0.5px;">Sudipta</strong></span>
         </div>
-        <div style="font-size: 0.76rem; color: #64748b; letter-spacing: 0.4px;">
+        <div style="font-size: 0.76rem; color: #64748b; letter-spacing: 0.4px; display: flex; align-items: center; justify-content: center; gap: 8px;">
           <span>All Rights Reserved</span>
+          <span>•</span>
+          <a href="javascript:void(0)" id="btn-manual-check-update" style="color: #00f2fe; text-decoration: none; font-weight: 600; cursor: pointer;" title="Check if a new APK update is available">🔄 Check for Updates</a>
         </div>
       </div>
     </footer>

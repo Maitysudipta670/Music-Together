@@ -368,7 +368,8 @@ class UnifiedSyncPlayer {
         rel: 0,
         playsinline: 1,
         enablejsapi: 1,
-        origin: window.location.origin
+        origin: 'https://music-together-tr1h.onrender.com',
+        widget_referrer: 'https://music-together-tr1h.onrender.com'
       },
       events: {
         onReady: (event) => {
@@ -438,6 +439,18 @@ class UnifiedSyncPlayer {
         }
       }
     });
+
+    const fixIframeAttrs = () => {
+      const iframe = document.querySelector('#youtube-player-container iframe');
+      if (iframe) {
+        try {
+          iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+          iframe.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
+        } catch (e) {}
+      }
+    };
+    setTimeout(fixIframeAttrs, 300);
+    setTimeout(fixIframeAttrs, 1000);
   }
 
   // Load a new track
@@ -502,7 +515,14 @@ class UnifiedSyncPlayer {
         this.ytContainer.classList.remove('active');
       }
 
-      this.audioElement.src = track.url;
+      let finalAudioSrc = track.url || '';
+      if (finalAudioSrc.startsWith('/')) {
+        const baseOrigin = (window.location.protocol === 'file:' || !window.location.host)
+          ? 'https://music-together-tr1h.onrender.com'
+          : window.location.origin;
+        finalAudioSrc = baseOrigin + finalAudioSrc;
+      }
+      this.audioElement.src = finalAudioSrc;
       this.audioElement.volume = this.volume;
       this.audioElement.muted = false;
 
