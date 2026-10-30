@@ -137,11 +137,13 @@ class UnifiedSyncPlayer {
     this.onTrackEnded = options.onTrackEnded || null;
     this.onUserPlay = options.onUserPlay || null;
     this.onUserPause = options.onUserPause || null;
+    this.onUserPrev = options.onUserPrev || null;
 
     this.hasInitialSynced = false;
     this.scheduledTimer = null;
     this.isKicked = false;
     this.isMaintenanceLocked = false;
+    this.isLocalMode = false;
 
     // Use DOM audio element for superior mobile browser compatibility & background playback
     this.audioElement = document.getElementById('html5-audio') || new Audio();
@@ -183,6 +185,9 @@ class UnifiedSyncPlayer {
       });
       navigator.mediaSession.setActionHandler('pause', () => {
         if (this.onUserPause) this.onUserPause();
+      });
+      navigator.mediaSession.setActionHandler('previoustrack', () => {
+        if (this.onUserPrev) this.onUserPrev();
       });
       navigator.mediaSession.setActionHandler('nexttrack', () => {
         if (this.onTrackEnded) this.onTrackEnded();
@@ -307,7 +312,7 @@ class UnifiedSyncPlayer {
     // Only start playing if not already playing - NEVER force seek!
     if (this.roomState && this.roomState.currentTrack && this.roomState.status === 'playing') {
       const isAlreadyPlaying = (this.activeType === 'youtube' && this.ytPlayer && typeof this.ytPlayer.getPlayerState === 'function' && this.ytPlayer.getPlayerState() === 1) ||
-                               (this.activeType === 'mp3' && !this.audioElement.paused);
+                               ((this.activeType === 'mp3' || this.activeType === 'local') && !this.audioElement.paused);
       if (!isAlreadyPlaying) {
         this.syncToState(this.roomState, false);
       }
@@ -440,6 +445,7 @@ class UnifiedSyncPlayer {
     if (this.isKicked || this.isMaintenanceLocked) return;
     this.currentTrack = track;
     this.activeType = track.type;
+    this.isLocalMode = (track.type === 'local' || track.isLocal === true);
     this.hasInitialSynced = false;
     this.lastSeekTime = Date.now();
     clearTimeout(this.scheduledTimer);
@@ -482,7 +488,7 @@ class UnifiedSyncPlayer {
           console.error('YouTube load error:', e);
         }
       }
-    } else if (track.type === 'mp3') {
+    } else if (track.type === 'mp3' || track.type === 'local') {
       // Sync Guardian: Completely silence and stop any lingering YouTube playback
       if (this.ytReady && this.ytPlayer) {
         try {
@@ -549,7 +555,7 @@ class UnifiedSyncPlayer {
     const delayMs = startAtServerTime - serverNow;
 
     if (delayMs > 30) {
-      if (this.activeType === 'mp3') {
+      if (this.activeType === 'mp3' || this.activeType === 'local') {
         try {
           if (this.audioElement.readyState >= 1) {
             this.audioElement.currentTime = targetPosition;
@@ -581,7 +587,7 @@ class UnifiedSyncPlayer {
               this.ytPlayer.playVideo();
             }
           } catch (e) {}
-        } else if (this.activeType === 'mp3') {
+        } else if (this.activeType === 'mp3' || this.activeType === 'local') {
           if (this.isUnlocked) {
             const expectedNow = this.syncEngine.getExpectedPosition(this.roomState);
             if (this.audioElement.readyState >= 1 && Math.abs(this.audioElement.currentTime - expectedNow) > 0.5) {
@@ -600,6 +606,7 @@ class UnifiedSyncPlayer {
   // Sync to room state
   syncToState(state, forceSeek = false) {
     if (this.isKicked || this.isMaintenanceLocked) return;
+    if (this.isLocalMode) return; // Dedicated Local Device Playback: Preserve user's local track
     this.roomState = state;
     if (!state.currentTrack) {
       this.stop();
@@ -649,7 +656,7 @@ class UnifiedSyncPlayer {
           this.ytPlayer.playVideo();
         }
       } catch (e) {}
-    } else if (this.activeType === 'mp3') {
+    } else if (this.activeType === 'mp3' || this.activeType === 'local') {
       const cur = this.audioElement.currentTime || 0;
       const isAlreadyPlaying = !this.audioElement.paused && this.audioElement.readyState >= 2;
       const drift = (targetPosition !== null) ? Math.abs(cur - targetPosition) : 0;
@@ -660,7 +667,7 @@ class UnifiedSyncPlayer {
         this.lastSeekTime = Date.now();
       }
       if (this.isUnlocked && !isAlreadyPlaying) {
-        this.audioElement.play().catch(e => console.warn('MP3 play interrupted:', e));
+        this.audioElement.play().catch(e => console.warn('Audio play interrupted:', e));
       }
     }
   }
@@ -684,7 +691,7 @@ class UnifiedSyncPlayer {
           }
         }
       } catch (e) {}
-    } else if (this.activeType === 'mp3') {
+    } else if (this.activeType === 'mp3' || this.activeType === 'local') {
       try {
         this.audioElement.pause();
         if (targetPosition !== null && !isNaN(targetPosition) && this.audioElement.readyState >= 1) {
@@ -705,10 +712,10 @@ class UnifiedSyncPlayer {
           this.ytPlayer.playVideo();
         }
       } catch (e) {}
-    } else if (this.activeType === 'mp3') {
+    } else if (this.activeType === 'mp3' || this.activeType === 'local') {
       try {
         this.audioElement.currentTime = seconds;
-        if (this.roomState && this.roomState.status === 'playing') {
+        if ((this.roomState && this.roomState.status === 'playing') || this.isLocalMode) {
           this.audioElement.play().catch(() => {});
         }
       } catch (e) {}
@@ -721,6 +728,7 @@ class UnifiedSyncPlayer {
     this.roomState = null;
     this.currentTrack = null;
     this.activeType = null;
+    this.isLocalMode = false;
     if (this.ytPlayer) {
       try {
         if (typeof this.ytPlayer.stopVideo === 'function') this.ytPlayer.stopVideo();
@@ -742,7 +750,7 @@ class UnifiedSyncPlayer {
   getCurrentTime() {
     if (this.activeType === 'youtube' && this.ytReady && this.ytPlayer && typeof this.ytPlayer.getCurrentTime === 'function') {
       return this.ytPlayer.getCurrentTime() || 0;
-    } else if (this.activeType === 'mp3') {
+    } else if (this.activeType === 'mp3' || this.activeType === 'local') {
       return this.audioElement.currentTime || 0;
     }
     return 0;
@@ -751,7 +759,7 @@ class UnifiedSyncPlayer {
   getDuration() {
     if (this.activeType === 'youtube' && this.ytReady && this.ytPlayer && typeof this.ytPlayer.getDuration === 'function') {
       return this.ytPlayer.getDuration() || 0;
-    } else if (this.activeType === 'mp3') {
+    } else if (this.activeType === 'mp3' || this.activeType === 'local') {
       return this.audioElement.duration || 0;
     }
     return 0;
@@ -787,7 +795,7 @@ class UnifiedSyncPlayer {
     setInterval(() => {
       // 0. Hard Silence Guardian: If kicked or maintenance locked, strictly silence and exit!
       if (this.isKicked || this.isMaintenanceLocked) {
-        if (this.activeType === 'mp3' && this.audioElement && !this.audioElement.paused) {
+        if ((this.activeType === 'mp3' || this.activeType === 'local') && this.audioElement && !this.audioElement.paused) {
           try { this.audioElement.pause(); } catch (e) {}
         }
         if (this.activeType === 'youtube' && this.ytReady && this.ytPlayer) {
@@ -795,6 +803,14 @@ class UnifiedSyncPlayer {
             if (typeof this.ytPlayer.pauseVideo === 'function') this.ytPlayer.pauseVideo();
             if (typeof this.ytPlayer.mute === 'function') this.ytPlayer.mute();
           } catch (e) {}
+        }
+        return;
+      }
+
+      // Local Device Playback Mode: Independent local playback (bypasses room drift synchronization)
+      if (this.isLocalMode || this.activeType === 'local' || (this.currentTrack && this.currentTrack.isLocal)) {
+        if (this.onProgress) {
+          this.onProgress(this.getCurrentTime(), this.getDuration());
         }
         return;
       }
@@ -916,7 +932,7 @@ class UnifiedSyncPlayer {
     if (this.currentPlaybackRate === rate) return;
     this.currentPlaybackRate = rate;
 
-    if (this.activeType === 'mp3') {
+    if (this.activeType === 'mp3' || this.activeType === 'local') {
       try { this.audioElement.playbackRate = rate; } catch (e) {}
     } else if (this.activeType === 'youtube' && this.ytReady && this.ytPlayer && typeof this.ytPlayer.setPlaybackRate === 'function') {
       try { this.ytPlayer.setPlaybackRate(rate); } catch (e) {}

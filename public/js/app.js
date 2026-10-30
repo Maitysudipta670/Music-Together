@@ -415,9 +415,18 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     },
     onTrackEnded: () => {
+      // Local Device Playback: Advance to next song in device playlist automatically
+      if (typeof handleLocalTrackEnded === 'function' && handleLocalTrackEnded()) {
+        return;
+      }
       // Auto play next track in queue (only host triggers queue advancement to prevent race condition)
       if (isHost) {
         socket.emit('next-track');
+      }
+    },
+    onUserPrev: () => {
+      if (typeof playPrevLocalTrack === 'function') {
+        playPrevLocalTrack();
       }
     },
     onUserPlay: (pos) => {
@@ -1067,9 +1076,11 @@ document.addEventListener('DOMContentLoaded', () => {
     cachedHostId = state.hostSocketId;
     isHost = (state.hostSocketId === socket.id);
     hasAdminInRoom = !!state.hasAdmin;
-    updateUIFromState(state);
-    player.syncToState(state, false);
-    preloadNextQueueTrack(state.queue);
+    if (!isLocalPlaybackMode) {
+      updateUIFromState(state);
+      player.syncToState(state, false);
+      preloadNextQueueTrack(state.queue);
+    }
     if (state.chatHistory && Array.isArray(state.chatHistory)) {
       renderChatHistory(state.chatHistory);
     }
@@ -1093,8 +1104,10 @@ document.addEventListener('DOMContentLoaded', () => {
       currentRoomState.currentTrack = syncData.currentTrack;
     }
 
-    updatePlayPauseButton(syncData.status === 'playing');
-    player.syncToState(currentRoomState, !!syncData.isSeek);
+    if (!isLocalPlaybackMode) {
+      updatePlayPauseButton(syncData.status === 'playing');
+      player.syncToState(currentRoomState, !!syncData.isSeek);
+    }
   });
 
   socket.on('track-changed', (state) => {
@@ -1103,9 +1116,11 @@ document.addEventListener('DOMContentLoaded', () => {
     cachedHostId = state.hostSocketId;
     isHost = (state.hostSocketId === socket.id);
     hasAdminInRoom = !!state.hasAdmin;
-    updateUIFromState(state);
-    player.syncToState(state, false);
-    preloadNextQueueTrack(state.queue);
+    if (!isLocalPlaybackMode) {
+      updateUIFromState(state);
+      player.syncToState(state, false);
+      preloadNextQueueTrack(state.queue);
+    }
     if (state.chatHistory && Array.isArray(state.chatHistory)) {
       renderChatHistory(state.chatHistory);
     }
@@ -1315,11 +1330,26 @@ document.addEventListener('DOMContentLoaded', () => {
     if (isKickedFromRoom) return;
     triggerUnlock();
     const now = Date.now();
-    if (now - lastControlAction < 350) return;
+    if (now - lastControlAction < 250) return;
     lastControlAction = now;
 
+    // Handle Local Device Playback play/pause directly
+    if (isLocalPlaybackMode && currentLocalTrackIndex >= 0) {
+      const isPaused = player.audioElement.paused;
+      if (isPaused) {
+        player.play();
+        updatePlayPauseButton(true);
+        if (waveBarsContainer) waveBarsContainer.classList.add('playing');
+      } else {
+        player.pause();
+        updatePlayPauseButton(false);
+        if (waveBarsContainer) waveBarsContainer.classList.remove('playing');
+      }
+      return;
+    }
+
     if (!currentRoomState || !currentRoomState.currentTrack) {
-      alert('Please add a YouTube song or upload an MP3 track first!');
+      alert('Please select a device song, search YouTube, or choose an MP3 track first!');
       return;
     }
 
@@ -1340,11 +1370,32 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  const btnPrev = document.getElementById('btn-prev');
+  if (btnPrev) {
+    btnPrev.addEventListener('click', () => {
+      triggerUnlock();
+      const now = Date.now();
+      if (now - lastControlAction < 300) return;
+      lastControlAction = now;
+
+      if (isLocalPlaybackMode && localDeviceTracks.length > 0) {
+        playPrevLocalTrack();
+        return;
+      }
+      player.seek(0);
+    });
+  }
+
   btnNext.addEventListener('click', () => {
     triggerUnlock();
     const now = Date.now();
-    if (now - lastControlAction < 500) return;
+    if (now - lastControlAction < 300) return;
     lastControlAction = now;
+
+    if (isLocalPlaybackMode && localDeviceTracks.length > 0) {
+      playNextLocalTrack();
+      return;
+    }
     socket.emit('next-track', { clientServerTime: syncEngine.getServerTime() });
   });
 
@@ -1358,9 +1409,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (duration > 0) {
       // Guard against seeking past the end (cap at duration - 1.5s to prevent accidental track exit)
       const targetPos = Math.min((parseFloat(timeSlider.value) / 100) * duration, Math.max(0, duration - 1.5));
-      const nowServer = syncEngine.getServerTime();
       player.seek(targetPos);
-      socket.emit('seek', { position: targetPos, clientServerTime: nowServer });
+      if (!isLocalPlaybackMode) {
+        const nowServer = syncEngine.getServerTime();
+        socket.emit('seek', { position: targetPos, clientServerTime: nowServer });
+      }
     }
     isSeeking = false;
   };
@@ -1465,6 +1518,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     if (playNow) {
+      isLocalPlaybackMode = false;
       socket.emit('change-track', { track, autoplay: true, clientServerTime: syncEngine.getServerTime() });
     } else {
       socket.emit('add-queue', track);
@@ -1569,6 +1623,7 @@ document.addEventListener('DOMContentLoaded', () => {
           thumbnail: item.thumbnail,
           url: `https://www.youtube.com/watch?v=${item.id}`
         };
+        isLocalPlaybackMode = false;
         socket.emit('change-track', { track, autoplay: true, clientServerTime: syncEngine.getServerTime() });
         showToast(`Playing "${item.title.substring(0, 24)}..."`);
       });
@@ -1658,6 +1713,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       item.querySelector('.btn-play-mp3').addEventListener('click', () => {
         triggerUnlock();
+        isLocalPlaybackMode = false;
         socket.emit('change-track', { track, autoplay: true, clientServerTime: syncEngine.getServerTime() });
       });
 
@@ -1777,6 +1833,366 @@ document.addEventListener('DOMContentLoaded', () => {
       uploadFile(e.dataTransfer.files[0]);
     }
   });
+
+  // ========================================================
+  // 📱 11B. Local Device Songs & Offline Media Player Engine
+  // ========================================================
+  let localDeviceTracks = []; // Array of local audio objects
+  let currentLocalTrackIndex = -1;
+  let isLocalPlaybackMode = false;
+  let isDeviceShuffle = false;
+  let deviceRepeatMode = 'ALL'; // 'ALL' | 'ONE' | 'OFF'
+
+  const deviceFileInput = document.getElementById('device-file-input');
+  const deviceFolderInput = document.getElementById('device-folder-input');
+  const btnPickDeviceFiles = document.getElementById('btn-pick-device-files');
+  const btnPickDeviceFolder = document.getElementById('btn-pick-device-folder');
+  const btnPickDeviceEmpty = document.getElementById('btn-pick-device-empty');
+  const btnClearDeviceList = document.getElementById('btn-clear-device-list');
+  const deviceSearchInput = document.getElementById('device-search-input');
+  const deviceSongsListEl = document.getElementById('device-songs-list');
+  const deviceControlsBar = document.getElementById('device-controls-bar');
+  const deviceSongsCountEl = document.getElementById('device-songs-count');
+  const btnDeviceShuffle = document.getElementById('btn-device-shuffle');
+  const btnDeviceRepeat = document.getElementById('btn-device-repeat');
+  const btnSwitchToDeviceTab = document.getElementById('btn-switch-to-device-tab');
+
+  if (btnSwitchToDeviceTab) {
+    btnSwitchToDeviceTab.addEventListener('click', () => {
+      const devTab = document.querySelector('.tab-btn[data-tab="tab-device"]');
+      if (devTab) devTab.click();
+    });
+  }
+
+  if (btnPickDeviceFiles) {
+    btnPickDeviceFiles.addEventListener('click', () => {
+      if (deviceFileInput) deviceFileInput.click();
+    });
+  }
+
+  if (btnPickDeviceFolder) {
+    btnPickDeviceFolder.addEventListener('click', () => {
+      if (deviceFolderInput) deviceFolderInput.click();
+    });
+  }
+
+  if (btnPickDeviceEmpty) {
+    btnPickDeviceEmpty.addEventListener('click', () => {
+      if (deviceFileInput) deviceFileInput.click();
+    });
+  }
+
+  if (deviceFileInput) {
+    deviceFileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files.length > 0) {
+        handleDeviceFiles(e.target.files);
+        deviceFileInput.value = '';
+      }
+    });
+  }
+
+  if (deviceFolderInput) {
+    deviceFolderInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files.length > 0) {
+        handleDeviceFiles(e.target.files);
+        deviceFolderInput.value = '';
+      }
+    });
+  }
+
+  if (btnClearDeviceList) {
+    btnClearDeviceList.addEventListener('click', () => {
+      if (localDeviceTracks.length === 0) return;
+      if (confirm('Clear all device songs from the list?')) {
+        localDeviceTracks.forEach(t => {
+          try { URL.revokeObjectURL(t.blobUrl); } catch (e) {}
+        });
+        localDeviceTracks = [];
+        currentLocalTrackIndex = -1;
+        if (isLocalPlaybackMode) {
+          player.stop();
+          isLocalPlaybackMode = false;
+        }
+        renderDeviceSongsList();
+        showToast('Device songs list cleared');
+      }
+    });
+  }
+
+  if (deviceSearchInput) {
+    deviceSearchInput.addEventListener('input', () => {
+      renderDeviceSongsList();
+    });
+  }
+
+  if (btnDeviceShuffle) {
+    btnDeviceShuffle.addEventListener('click', () => {
+      isDeviceShuffle = !isDeviceShuffle;
+      btnDeviceShuffle.innerHTML = `🔀 Shuffle: <b>${isDeviceShuffle ? 'ON' : 'OFF'}</b>`;
+      btnDeviceShuffle.style.color = isDeviceShuffle ? 'var(--accent-cyan)' : 'var(--text-muted)';
+      showToast(isDeviceShuffle ? 'Shuffle turned ON' : 'Shuffle turned OFF');
+    });
+  }
+
+  if (btnDeviceRepeat) {
+    btnDeviceRepeat.addEventListener('click', () => {
+      if (deviceRepeatMode === 'ALL') {
+        deviceRepeatMode = 'ONE';
+      } else if (deviceRepeatMode === 'ONE') {
+        deviceRepeatMode = 'OFF';
+      } else {
+        deviceRepeatMode = 'ALL';
+      }
+      btnDeviceRepeat.innerHTML = `🔁 Repeat: <b>${deviceRepeatMode}</b>`;
+      btnDeviceRepeat.style.color = (deviceRepeatMode === 'OFF') ? 'var(--text-muted)' : 'var(--accent-cyan)';
+      showToast(`Repeat mode: ${deviceRepeatMode}`);
+    });
+  }
+
+  function handleDeviceFiles(fileList) {
+    if (!fileList || fileList.length === 0) return;
+    triggerUnlock();
+
+    let addedCount = 0;
+    const audioExts = ['.mp3', '.m4a', '.wav', '.ogg', '.aac', '.flac', '.opus', '.webm'];
+
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i];
+      const name = file.name || 'Song';
+      const ext = name.substring(name.lastIndexOf('.')).toLowerCase();
+
+      if (!file.type.startsWith('audio/') && !audioExts.includes(ext) && !name.match(/\.(mp3|m4a|wav|ogg|aac|flac|opus|webm)$/i)) {
+        continue;
+      }
+
+      const exists = localDeviceTracks.some(t => t.name === file.name && t.size === file.size);
+      if (exists) continue;
+
+      let title = name.replace(/\.[^/.]+$/, "");
+      title = title.replace(/^[0-9\s.\-_]+/, '').trim() || name;
+
+      const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+      const blobUrl = URL.createObjectURL(file);
+
+      localDeviceTracks.push({
+        id: 'local_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+        title: title,
+        name: file.name,
+        file: file,
+        blobUrl: blobUrl,
+        size: file.size,
+        sizeStr: `${sizeMb} MB`,
+        type: 'local',
+        isLocal: true
+      });
+      addedCount++;
+    }
+
+    renderDeviceSongsList();
+
+    if (addedCount > 0) {
+      showToast(`Added ${addedCount} song${addedCount > 1 ? 's' : ''} from device!`);
+      if (!isLocalPlaybackMode && (!currentRoomState || currentRoomState.status !== 'playing')) {
+        playLocalTrack(localDeviceTracks.length - addedCount);
+      }
+    }
+  }
+
+  function renderDeviceSongsList() {
+    if (!deviceSongsListEl) return;
+
+    if (localDeviceTracks.length === 0) {
+      if (deviceControlsBar) deviceControlsBar.style.display = 'none';
+      if (btnClearDeviceList) btnClearDeviceList.style.display = 'none';
+      deviceSongsListEl.innerHTML = `
+        <div class="device-empty-state">
+          <div style="font-size:2.4rem; margin-bottom:8px;">📱</div>
+          <p style="font-weight:700; color:var(--text-primary); margin-bottom:4px; font-size:0.95rem;">No device songs selected</p>
+          <p style="font-size:0.8rem; color:var(--text-muted); max-width:320px; margin:0 auto 14px; line-height:1.4;">
+            Select any downloaded MP3, M4A, or audio files from your Downloads or Music storage. Plays instantly without uploading!
+          </p>
+          <button class="btn-primary" id="btn-pick-device-empty" type="button" style="margin:0 auto; padding:8px 22px; font-size:0.85rem;">
+            📂 Choose Songs from Device
+          </button>
+        </div>
+      `;
+      const btnEmpty = document.getElementById('btn-pick-device-empty');
+      if (btnEmpty && deviceFileInput) {
+        btnEmpty.addEventListener('click', () => deviceFileInput.click());
+      }
+      return;
+    }
+
+    if (deviceControlsBar) deviceControlsBar.style.display = 'flex';
+    if (btnClearDeviceList) btnClearDeviceList.style.display = 'block';
+
+    const filter = (deviceSearchInput ? deviceSearchInput.value : '').trim().toLowerCase();
+    const count = localDeviceTracks.length;
+    if (deviceSongsCountEl) {
+      deviceSongsCountEl.textContent = `${count} downloaded song${count > 1 ? 's' : ''} on device`;
+    }
+
+    deviceSongsListEl.innerHTML = '';
+    localDeviceTracks.forEach((track, originalIndex) => {
+      if (filter && !track.title.toLowerCase().includes(filter) && !track.name.toLowerCase().includes(filter)) {
+        return;
+      }
+
+      const isCurrent = (isLocalPlaybackMode && currentLocalTrackIndex === originalIndex);
+      const item = document.createElement('div');
+      item.className = `queue-item ${isCurrent ? 'device-song-active' : ''}`;
+
+      item.innerHTML = `
+        <div class="queue-item-info">
+          <span style="font-size:1.1rem;">${isCurrent ? '🔊' : '🎵'}</span>
+          <div style="display:flex; flex-direction:column; min-width:0;">
+            <div class="queue-item-title">${escapeHtml(track.title)}</div>
+            <span style="font-size:0.72rem; color:var(--text-muted);">${track.sizeStr}</span>
+          </div>
+        </div>
+        <div class="queue-item-actions">
+          <button class="btn-mini btn-play-local" style="${isCurrent ? 'background:#10b981; color:#000; font-weight:700;' : ''}" title="Play Now">
+            ${isCurrent ? '▶ Playing' : '▶ Play'}
+          </button>
+          <button class="btn-mini btn-remove-local" style="color:#ff6b6b; border:1px solid rgba(255,100,100,0.3); background:rgba(255,50,50,0.08); padding:3px 6px;" title="Remove from list">
+            ✕
+          </button>
+        </div>
+      `;
+
+      item.querySelector('.btn-play-local').addEventListener('click', () => {
+        playLocalTrack(originalIndex);
+      });
+
+      item.querySelector('.btn-remove-local').addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeLocalTrack(originalIndex);
+      });
+
+      deviceSongsListEl.appendChild(item);
+    });
+  }
+
+  function playLocalTrack(index) {
+    if (index < 0 || index >= localDeviceTracks.length) return;
+    triggerUnlock();
+
+    currentLocalTrackIndex = index;
+    isLocalPlaybackMode = true;
+    const track = localDeviceTracks[index];
+
+    const standardTrack = {
+      id: track.id,
+      title: track.title,
+      type: 'local',
+      url: track.blobUrl,
+      size: track.size,
+      isLocal: true,
+      thumbnail: null
+    };
+
+    player.loadTrack(standardTrack, true, 0);
+    updateLocalPlayerUI(standardTrack, true);
+    renderDeviceSongsList();
+    showToast(`▶ Playing: ${track.title}`);
+  }
+
+  function updateLocalPlayerUI(track, isPlaying) {
+    if (trackTitleEl) trackTitleEl.textContent = track.title || 'Local Track';
+    if (trackSubEl) {
+      const idxText = localDeviceTracks.length > 0 ? `(${currentLocalTrackIndex + 1}/${localDeviceTracks.length})` : '';
+      trackSubEl.innerHTML = `<span id="track-source" class="badge-source local">📱 DEVICE</span> <span style="font-size:0.75rem; color:#10b981; font-weight:600; margin-left:6px;">Local Offline ${idxText}</span>`;
+    }
+    if (coverImg) coverImg.style.display = 'none';
+    if (coverPlaceholder) {
+      coverPlaceholder.style.display = 'block';
+      coverPlaceholder.textContent = '📱';
+    }
+    const ytContainer = document.getElementById('youtube-player-container');
+    if (ytContainer) ytContainer.classList.remove('active');
+
+    updatePlayPauseButton(isPlaying);
+    if (waveBarsContainer) {
+      if (isPlaying) waveBarsContainer.classList.add('playing');
+      else waveBarsContainer.classList.remove('playing');
+    }
+  }
+
+  function playNextLocalTrack() {
+    if (localDeviceTracks.length === 0) return;
+
+    if (deviceRepeatMode === 'ONE') {
+      player.seek(0);
+      player.play(0);
+      return;
+    }
+
+    if (isDeviceShuffle && localDeviceTracks.length > 1) {
+      let randIndex;
+      do {
+        randIndex = Math.floor(Math.random() * localDeviceTracks.length);
+      } while (randIndex === currentLocalTrackIndex && localDeviceTracks.length > 1);
+      playLocalTrack(randIndex);
+      return;
+    }
+
+    let nextIndex = currentLocalTrackIndex + 1;
+    if (nextIndex >= localDeviceTracks.length) {
+      if (deviceRepeatMode === 'ALL') {
+        nextIndex = 0;
+      } else {
+        player.pause();
+        updateLocalPlayerUI(localDeviceTracks[currentLocalTrackIndex], false);
+        return;
+      }
+    }
+    playLocalTrack(nextIndex);
+  }
+
+  function playPrevLocalTrack() {
+    if (localDeviceTracks.length === 0) return;
+
+    const curTime = player.getCurrentTime();
+    if (curTime > 3) {
+      player.seek(0);
+      return;
+    }
+
+    let prevIndex = currentLocalTrackIndex - 1;
+    if (prevIndex < 0) {
+      prevIndex = localDeviceTracks.length - 1;
+    }
+    playLocalTrack(prevIndex);
+  }
+
+  function handleLocalTrackEnded() {
+    if (isLocalPlaybackMode && localDeviceTracks.length > 0) {
+      playNextLocalTrack();
+      return true;
+    }
+    return false;
+  }
+
+  function removeLocalTrack(index) {
+    if (index < 0 || index >= localDeviceTracks.length) return;
+    const removed = localDeviceTracks.splice(index, 1)[0];
+    try { URL.revokeObjectURL(removed.blobUrl); } catch (e) {}
+
+    if (currentLocalTrackIndex === index) {
+      if (localDeviceTracks.length > 0) {
+        const nextIdx = index < localDeviceTracks.length ? index : 0;
+        playLocalTrack(nextIdx);
+      } else {
+        player.stop();
+        isLocalPlaybackMode = false;
+        currentLocalTrackIndex = -1;
+        updateUIFromState(currentRoomState || {});
+      }
+    } else if (currentLocalTrackIndex > index) {
+      currentLocalTrackIndex--;
+    }
+    renderDeviceSongsList();
+  }
 
   // 12. Tabs (YouTube / MP3 / Queue)
   const tabs = document.querySelectorAll('.tab-btn');

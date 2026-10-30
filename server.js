@@ -70,10 +70,10 @@ app.use('/uploads', express.static(UPLOADS_DIR, {
 // ========================================================
 app.get('/api/app-version', (req, res) => {
   res.json({
-    versionCode: 4, // Bumped to 2 for In-App Auto-Update!
-    versionName: "1.3.0",
+    versionCode: 5,
+    versionName: "1.4.0",
     apkUrl: "https://music-together-tr1h.onrender.com/download/latest.apk",
-    releaseNotes: "• Zero-delay precision audio sync\n• Fixed track auto-skipping\n• Restored original working UI\n* signature",
+    releaseNotes: "• Play downloaded songs directly from device storage (Zero Upload!)\n• Offline media player support with Shuffle & Repeat\n• Previous / Next track controls\n• Created by Sudipta ❤️",
     forceUpdate: false
   });
 });

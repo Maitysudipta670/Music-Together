@@ -27,12 +27,13 @@
   <meta property="twitter:title" content="SyncTunes - Realtime Synchronized Music Party">
   <meta property="twitter:description" content="Listen to music together simultaneously with friends. Zero lag, YouTube & MP3 sync rooms with 6-digit codes.">
 
-  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="css/style.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎵</text></svg>">
   <!-- YouTube IFrame Player API -->
   <script src="https://www.youtube.com/iframe_api"></script>
-  <!-- Socket.IO Client -->
+  <!-- Socket.IO Client with Local Fallback -->
   <script src="/socket.io/socket.io.js"></script>
+  <script>if (typeof io === 'undefined') { document.write('<script src="js/socket.io.min.js"><\/script>'); }</script>
 </head>
 <body>
   <!-- Floating In-App & Web Update Notification Banner -->
@@ -189,6 +190,7 @@
 
       <!-- Playback Controls -->
       <div class="controls-row">
+        <button id="btn-prev" class="btn-ctrl" title="Previous Song">⏮</button>
         <button id="btn-play-master" class="btn-play-master" title="Play / Pause">▶</button>
         <button id="btn-next" class="btn-ctrl" title="Next Song">⏭</button>
       </div>
@@ -220,6 +222,9 @@
       <div class="tab-nav">
         <button class="tab-btn active" data-tab="tab-youtube">
           <span>🎬</span> YouTube
+        </button>
+        <button class="tab-btn" data-tab="tab-device" id="tab-btn-device">
+          <span>📱</span> Device Songs
         </button>
         <button class="tab-btn" data-tab="tab-mp3">
           <span>📁</span> Upload MP3
@@ -271,8 +276,74 @@
         </div>
       </div>
 
+      <!-- Device Music (Offline & Local Storage Player) Pane -->
+      <div id="tab-device" class="tab-pane">
+        <div class="device-hero-banner">
+          <div class="device-banner-icon">📱</div>
+          <div class="device-banner-text">
+            <h4>Device Downloaded Songs (No Upload)</h4>
+            <p>Play songs stored on your device like a normal media player! Instant 0s play, zero data upload &amp; full offline support.</p>
+          </div>
+        </div>
+
+        <!-- Action Buttons Row -->
+        <div class="device-actions-row">
+          <input type="file" id="device-file-input" accept="audio/*" multiple style="display:none;">
+          <input type="file" id="device-folder-input" webkitdirectory directory multiple style="display:none;">
+
+          <button id="btn-pick-device-files" class="btn-primary" type="button" style="flex:1; justify-content:center; gap:6px; height:42px;">
+            <span>📂</span> Choose Songs
+          </button>
+          <button id="btn-pick-device-folder" class="btn-icon" type="button" style="flex:1; justify-content:center; gap:6px; height:42px;">
+            <span>📁</span> Choose Folder
+          </button>
+          <button id="btn-clear-device-list" class="btn-mini" type="button" title="Clear Device Songs List" style="display:none; padding:8px 12px; color:#ff6b6b; border:1px solid rgba(255,100,100,0.3); background:rgba(255,50,50,0.1); border-radius:8px;">
+            <span>🗑️</span> Clear
+          </button>
+        </div>
+
+        <!-- Filter & Toggles Bar -->
+        <div id="device-controls-bar" style="display:none; margin-top:10px; flex-direction:column; gap:8px;">
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input type="text" id="device-search-input" class="text-input" placeholder="🔍 Search downloaded songs on device..." style="flex:1; height:38px; font-size:0.85rem;">
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.8rem; color:var(--text-muted); padding:2px 4px;">
+            <span id="device-songs-count">0 songs</span>
+            <div style="display:flex; gap:6px;">
+              <button id="btn-device-shuffle" class="btn-mini" type="button" style="cursor:pointer;" title="Shuffle Playback">
+                🔀 Shuffle: <b>OFF</b>
+              </button>
+              <button id="btn-device-repeat" class="btn-mini" type="button" style="cursor:pointer;" title="Repeat Mode">
+                🔁 Repeat: <b>ALL</b>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Device Songs List Container -->
+        <div id="device-songs-list" class="queue-list" style="margin-top:10px;">
+          <!-- Empty State (default) -->
+          <div class="device-empty-state">
+            <div style="font-size:2.4rem; margin-bottom:8px;">📱</div>
+            <p style="font-weight:700; color:var(--text-primary); margin-bottom:4px; font-size:0.95rem;">No device songs selected</p>
+            <p style="font-size:0.8rem; color:var(--text-muted); max-width:320px; margin:0 auto 14px; line-height:1.4;">
+              Select any downloaded MP3, M4A, or audio files from your Downloads or Music storage. Plays instantly without uploading!
+            </p>
+            <button class="btn-primary" id="btn-pick-device-empty" type="button" style="margin:0 auto; padding:8px 22px; font-size:0.85rem;">
+              📂 Choose Songs from Device
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- MP3 Pane -->
       <div id="tab-mp3" class="tab-pane">
+        <div style="background:rgba(0,242,254,0.06); border:1px solid rgba(0,242,254,0.2); border-radius:10px; padding:8px 12px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; font-size:0.8rem;">
+          <span style="color:var(--text-secondary);">⚡ Want to play songs without uploading?</span>
+          <button type="button" id="btn-switch-to-device-tab" class="btn-mini" style="background:var(--accent-cyan); color:#000; font-weight:700; border:none; cursor:pointer; padding:4px 10px; border-radius:6px;">
+            📱 Device Songs
+          </button>
+        </div>
         <input type="file" id="mp3-file-input" accept="audio/*" style="display:none;">
         <div id="mp3-dropzone" class="dropzone">
           <div class="dropzone-icon">📥</div>
@@ -636,8 +707,8 @@
   </div>
 
   <!-- App scripts -->
-  <script src="/js/sync-engine.js"></script>
-  <script src="/js/player.js"></script>
-  <script src="/js/app.js"></script>
+  <script src="js/sync-engine.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/app.js"></script>
 </body>
 </html>
