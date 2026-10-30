@@ -68,18 +68,23 @@ app.use('/uploads', express.static(UPLOADS_DIR, {
 // ========================================================
 // 📱 In-App Auto-Update Endpoint for SyncTunes Android App
 // ========================================================
+const GITHUB_LATEST_APK_URL = "https://github.com/Maitysudipta670/Music-Together/releases/download/v1.6.0/SyncTunes-v1.6.0.apk";
+
 app.get('/api/app-version', (req, res) => {
   res.json({
-    versionCode: 6,
-    versionName: "1.5.0",
-    apkUrl: "https://music-together-tr1h.onrender.com/download/latest.apk",
-    releaseNotes: "• SyncTunes v1.5.0 (All Rights Reserved)\n• High-precision real-time music sync\n• Created with ❤️ by Sudipta",
+    versionCode: 7,
+    versionName: "1.6.0",
+    apkUrl: GITHUB_LATEST_APK_URL,
+    releaseNotes: "• Fixed YouTube Player (Error 153 resolved)\n• High-precision real-time music sync\n• Created with ❤️ by Sudipta • All Rights Reserved",
     forceUpdate: false
   });
 });
 
-// Serve the latest APK for in-app downloads
+// Serve the latest APK for in-app downloads (Redirects to GitHub Release CDN or falls back locally)
 app.get('/download/latest.apk', (req, res) => {
+  if (GITHUB_LATEST_APK_URL) {
+    return res.redirect(GITHUB_LATEST_APK_URL);
+  }
   const apkPath = path.join(__dirname, 'public', 'downloads', 'SyncTunes-latest.apk');
   if (fs.existsSync(apkPath)) {
     res.download(apkPath, 'SyncTunes-latest.apk');
